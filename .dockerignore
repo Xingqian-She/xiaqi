@@ -1,15 +1,4 @@
-.git
-.github
-.idea
-.vscode
-.venv
-**/.pytest_cache
-**/.ruff_cache
-**/__pycache__
-**/*.py[cod]
-*.egg-info
-build
-dist
-tmp
-*.pdf
-models/katago
+# The development image contains tooling only; source is bind-mounted.
+**
+!docker/
+!docker/Dockerfile

@@ -1,19 +1,41 @@
-# Zero-TTT
+# xiaqi
 
-Zero-TTT 是面向单机单 GPU 的围棋训练系统，采用单仓多包和独立服务部署：Control、Data、
-Trainer、Self-play 与 NiceGUI UI 只通过版本化 HTTP 作业契约和不可变产物引用协作。
+重新开始的下棋 AI 项目。当前仅保留 Python/PyTorch GPU 开发环境。
+旧版代码和资料保留在 `Zero-TTT` 分支。
 
-## 快速开始
+## 开发环境
+
+需要 Docker Compose，以及可供 Linux 容器使用的 NVIDIA GPU。
+沿用基础镜像 `pytorch/pytorch:2.13.0-cuda13.2-cudnn9-devel`，
+提供 Python、PyTorch、CUDA、cuDNN、Triton 和 C/C++ 编译工具，不额外安装业务依赖。
+
+在仓库根目录构建并进入容器：
 
 ```powershell
-$env:ZERO_TTT_DATA_ROOT = 'D:/datasets/Zero-TTT'
-docker compose build
-docker compose up -d
+docker compose build dev
+docker compose run --rm dev
 ```
 
-- UI：<http://127.0.0.1:8080>
-- Control OpenAPI：<http://127.0.0.1:8090/docs>
-- TensorBoard：<http://127.0.0.1:6006>
+如果 Docker Hub 或软件源连接超时，可通过临时代理构建。
+以下使用本机当前的代理端口 `7897`，其他机器按实际地址调整：
 
-业务数据不写入 Git 工作区。目录、服务所有权、三条有限流程和验证命令见
-[当前文档](docs/README.md)。
+```powershell
+$env:HTTP_PROXY = 'http://127.0.0.1:7897'
+$env:HTTPS_PROXY = 'http://127.0.0.1:7897'
+docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --build-arg https_proxy=http://host.docker.internal:7897 dev
+```
+
+仓库挂载到 `/workspace`，修改代码无需重建镜像；输入 `exit` 退出容器。
+
+## 检查环境
+
+```powershell
+docker compose config --quiet
+docker compose run --rm -T dev python scripts/check_env.py
+```
+
+检查会执行 GPU 张量运算，并使用 Inductor 后端实际编译 `torch.compile`
+的前向和反向计算，与 eager 结果比较。首次运行需要等待编译，失败时返回非零退出码。
+
+Inductor、Triton 和 CUDA 编译缓存均写入容器的 `/tmp`；
+使用上述 `--rm` 命令退出后随容器清理。
