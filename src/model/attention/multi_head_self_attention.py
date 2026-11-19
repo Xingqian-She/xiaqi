@@ -10,8 +10,7 @@ class MultiHeadSelfAttention(nn.Module):
     """双向多头自注意力，只计算注意力分支。
 
     本模块不执行 RMSNorm，也不添加残差连接。
-    归一化和残差由外层 Encoder block 负责。
-    本模块也不负责输出投影初始化缩放。
+    out_proj 的初始化缩放、归一化和残差由外层 Encoder block 负责。
     """
 
     def __init__(self, model_dim: int, num_heads: int, rope: AxialRoPE2D) -> None:
