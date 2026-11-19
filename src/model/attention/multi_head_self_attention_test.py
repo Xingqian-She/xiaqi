@@ -3,8 +3,8 @@ import unittest
 
 import torch
 
-from src.model.attention.multi_head_self_attention import MultiHeadSelfAttention
-from src.model.positional_encoding.axial_rope_2d import AxialRoPE2D
+from .multi_head_self_attention import MultiHeadSelfAttention
+from ..positional_encoding.axial_rope_2d import AxialRoPE2D
 
 
 class MultiHeadSelfAttentionTest(unittest.TestCase):

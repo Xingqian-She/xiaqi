@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from src.model.ffn.swiglu import SwiGLU
+from .swiglu import SwiGLU
 
 
 class SwiGLUTest(unittest.TestCase):

@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from src.model.positional_encoding.axial_rope_2d import AxialRoPE2D
+from .axial_rope_2d import AxialRoPE2D
 
 
 class AxialRoPE2DTest(unittest.TestCase):
