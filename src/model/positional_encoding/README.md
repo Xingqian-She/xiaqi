@@ -25,4 +25,16 @@ CLS 在每对相邻通道上固定旋转 `π`（180°），数学上对应 `R_CL
 
 ## 测试
 
-在仓库根目录运行 `python src/model/positional_encoding/axial_rope_2d_test.py`。用例覆盖 CLS 半圈旋转、棋盘中心零相位以及向右和向下一格时旋转的通道对。 [单元测试](axial_rope_2d_test.py)
+构建好项目的 `dev` 镜像后，在仓库根目录运行：
+
+```sh
+docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.model.positional_encoding.axial_rope_2d_test
+```
+
+[单元测试](axial_rope_2d_test.py)覆盖：
+
+- CLS 半圈、棋盘中心零相位、四个方向的旋转，以及默认和自定义 `theta` 下每轴的频率。
+- 9×9、13×13、19×19 棋盘上，棋盘点 Q/K 的点积符合相对位移公式。
+- 多批次、多头的非连续 Q/K 保持原形状和范数，反向梯度与解析值一致；旋转表不写入 `state_dict`。
+- 拒绝不合法的构造参数及 Q/K 形状或数据类型。
+- CUDA 可用时，验证旋转表随模块移动，保持输入的 `float16` 类型，且结果与 CPU 在容差内一致。CUDA 不可用时跳过这项。
