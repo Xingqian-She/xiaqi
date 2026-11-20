@@ -3,7 +3,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 source_dir="$PWD/third_party/minizero"
-output_file="$PWD/build/minizero/go/minizero_go"
+if [[ $# -eq 0 ]]; then
+    target=minizero
+    artifact=minizero_go
+elif [[ $# -eq 1 && "$1" == --python ]]; then
+    target=minizero_py
+    artifact="minizero_py$(python -c 'import sysconfig; print(sysconfig.get_config_var("EXT_SUFFIX"))')"
+else
+    echo 'Usage: bash scripts/build_minizero.sh [--python]' >&2
+    exit 2
+fi
+
 if [[ ! -f "$source_dir/CMakeLists.txt" ]]; then
     echo 'Run git submodule update --init -- third_party/minizero in the host checkout.' >&2
     exit 1
@@ -27,5 +37,5 @@ cmake -S "$scratch_dir/source" -B "$build_dir" -G Ninja \
     -DGAME_TYPE=GO -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g0' \
     -DCMAKE_PREFIX_PATH="$torch_prefix" -DPython_EXECUTABLE="$(command -v python)"
-cmake --build "$build_dir" --target minizero --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-install -D -m 755 "$build_dir/minizero_go" "$output_file"
+cmake --build "$build_dir" --target "$target" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
+install -D -m 755 "$build_dir/$artifact" "$PWD/build/minizero/go/$artifact"
