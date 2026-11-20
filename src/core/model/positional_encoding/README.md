@@ -28,7 +28,7 @@ CLS 在每对相邻通道上固定旋转 `π`（180°），数学上对应 `R_CL
 构建好项目的 `dev` 镜像后，在仓库根目录运行：
 
 ```sh
-docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.model.positional_encoding.axial_rope_2d_test
+docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.core.model.positional_encoding.axial_rope_2d_test
 ```
 
 [单元测试](axial_rope_2d_test.py)覆盖：

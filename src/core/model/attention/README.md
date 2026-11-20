@@ -13,8 +13,8 @@
 ```python
 import torch
 
-from src.model.attention.multi_head_self_attention import MultiHeadSelfAttention
-from src.model.positional_encoding.axial_rope_2d import AxialRoPE2D
+from src.core.model.attention.multi_head_self_attention import MultiHeadSelfAttention
+from src.core.model.positional_encoding.axial_rope_2d import AxialRoPE2D
 
 rope = AxialRoPE2D(board_size=9, head_dim=8)
 attention = MultiHeadSelfAttention(model_dim=32, num_heads=4, rope=rope)
@@ -31,14 +31,14 @@ output = attention(tokens)
 
 ## 与 Encoder 的分工
 
-本模块不执行 RMSNorm、不添加残差连接，也不负责输出投影初始化缩放。外层 Pre-RMSNorm block 负责组织 `tokens + attention(norm(tokens))`；按[首版实现规划](../../../首版实现规划.md#transformer)，组装 Encoder 时再将 `out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。这与 SDPA 在前向中使用的点积缩放是两回事。
+本模块不执行 RMSNorm、不添加残差连接，也不负责输出投影初始化缩放。外层 Pre-RMSNorm block 负责组织 `tokens + attention(norm(tokens))`；按[首版实现规划](../../../../首版实现规划.md#transformer)，组装 Encoder 时再将 `out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。这与 SDPA 在前向中使用的点积缩放是两回事。
 
 ## 测试
 
 构建好项目的 `dev` 镜像后，在仓库根目录运行：
 
 ```sh
-docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.model.attention.multi_head_self_attention_test
+docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.core.model.attention.multi_head_self_attention_test
 ```
 
 [单元测试](multi_head_self_attention_test.py)在 9×9 输入上用显式计算的双向注意力核对前向结果，检查输出形状和无偏置投影，并验证 CPU/CUDA 上的输出有限、输入和参数都有有限且非全零的梯度。用例也检查不合法的头数、维度和 token 形状。PyTorch 未检测到 CUDA 时跳过 CUDA 用例；这组测试不包含完整 Encoder 或 `torch.compile` 验收。

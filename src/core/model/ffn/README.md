@@ -12,7 +12,7 @@
 ```python
 import torch
 
-from src.model.ffn.swiglu import SwiGLU
+from src.core.model.ffn.swiglu import SwiGLU
 
 ffn = SwiGLU(model_dim=32, hidden_dim=48)
 tokens = torch.randn(2, 82, 32)
@@ -27,14 +27,14 @@ output = ffn(tokens)
 
 ## 与 Encoder 的分工
 
-外层 Encoder block 负责 RMSNorm 和残差相加，FFN 子层按 `tokens + ffn(norm(tokens))` 更新。组装 Encoder 时，将 `ffn.out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。 [首版实现规划](../../../首版实现规划.md#transformer)
+外层 Encoder block 负责 RMSNorm 和残差相加，FFN 子层按 `tokens + ffn(norm(tokens))` 更新。组装 Encoder 时，将 `ffn.out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。 [首版实现规划](../../../../首版实现规划.md#transformer)
 
 ## 测试
 
 构建项目的 `dev` 镜像后，在仓库根目录运行下面的命令。
 
 ```sh
-docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.model.ffn.swiglu_test
+docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.core.model.ffn.swiglu_test
 ```
 
 测试用显式公式核对 9×9、13×13 棋盘对应的 token 序列和单个 token 的前向结果，同时检查投影形状和无偏置设置。宽度或输入形状不合法时应抛出 `ValueError`。反向用例检查输入和参数的梯度是否有限且非全零。CUDA 用例在 PyTorch 检测到 CUDA 时运行。 [测试代码](swiglu_test.py)

@@ -1,6 +1,6 @@
 # 围棋 Transformer
 
-`Transformer` 由卷积 Stem、多层 Encoder 和策略与价值输出头组成。 [实现代码](transformer.py) · [首版实现规划](../../../首版实现规划.md#transformer)
+`Transformer` 由卷积 Stem、多层 Encoder 和策略与价值输出头组成。 [实现代码](transformer.py) · [首版实现规划](../../../../首版实现规划.md#transformer)
 
 ## 接口与形状
 
@@ -13,7 +13,7 @@
 ```python
 import torch
 
-from src.model.transformer.transformer import Transformer
+from src.core.model.transformer.transformer import Transformer
 
 model = Transformer(
     board_size=9,
@@ -41,7 +41,7 @@ Stem 输出按行展开为棋盘 token。Transformer 在序列开头拼接一个
 构建项目的 `dev` 镜像后，从仓库根目录运行下面的命令。
 
 ```sh
-docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.model.transformer.transformer_test
+docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.core.model.transformer.transformer_test
 ```
 
 测试核对落点和 `pass` 的顺序、价值头计算、无偏置设置、CPU/CUDA 梯度，以及将 9×9 权重载入 13×13 模型后的输出。CUDA 反向用例在 PyTorch 检测到 CUDA 时运行。 [测试代码](transformer_test.py)
@@ -49,5 +49,5 @@ docker compose run --rm --no-deps --pull never -T dev python -m unittest -v src.
 在 GPU 开发容器中设置 `XIAQI_TEST_TRANSFORMER_COMPILE=1`，可对比整网在 9×9 输入上的 Inductor 与 eager 输出、输入梯度和参数梯度。
 
 ```sh
-docker compose run --rm --no-deps --pull never -T -e XIAQI_TEST_TRANSFORMER_COMPILE=1 dev python -m unittest -v src.model.transformer.transformer_test.TransformerTest.test_cuda_compile_matches_eager
+docker compose run --rm --no-deps --pull never -T -e XIAQI_TEST_TRANSFORMER_COMPILE=1 dev python -m unittest -v src.core.model.transformer.transformer_test.TransformerTest.test_cuda_compile_matches_eager
 ```
