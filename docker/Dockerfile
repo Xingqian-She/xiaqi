@@ -12,8 +12,24 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
-        build-essential ninja-build \
+        build-essential git ninja-build \
+        libboost-iostreams-dev libboost-system-dev libboost-thread-dev \
+        libopencv-dev pybind11-dev python3-dev zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# MiniZero's CMake also requires ALE for the Go target. Use its upstream pin.
+# The pinned ALE headers rely on transitive <cstdint> includes that GCC 13 removed.
+RUN git init --quiet /tmp/minizero-ale \
+    && git -C /tmp/minizero-ale fetch --quiet --depth 1 \
+        https://github.com/Farama-Foundation/Arcade-Learning-Environment.git \
+        d59d00688b58c5c14dff5fc79db5c22e86987f5d \
+    && git -C /tmp/minizero-ale checkout --quiet --detach FETCH_HEAD \
+    && cmake -S /tmp/minizero-ale -B /tmp/minizero-ale/build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DBUILD_PYTHON_LIB=OFF \
+        -DCMAKE_CXX_FLAGS="-include cstdint" \
+    && cmake --build /tmp/minizero-ale/build --parallel 2 \
+    && cmake --install /tmp/minizero-ale/build \
+    && rm -rf /tmp/minizero-ale
 
 WORKDIR /workspace
 CMD ["/bin/bash"]

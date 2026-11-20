@@ -1,0 +1,29 @@
+diff --git a/minizero/actor/actor_group.cpp b/minizero/actor/actor_group.cpp
+--- a/minizero/actor/actor_group.cpp
++++ b/minizero/actor/actor_group.cpp
+@@ -4,6 +4,7 @@
+ #include "create_network.h"
+ #include "random.h"
+ #include <algorithm>
++#include <cstdlib>
+ #include <iostream>
+ #include <memory>
+ #include <string>
+@@ -199,7 +200,7 @@
+ 
+ void ActorGroup::handleCommand()
+ {
+-    if (commands_.empty() || !getSharedData()->do_cpu_job_) { return; }
++    if (!getSharedData()->do_cpu_job_) { return; }
+ 
+     std::lock_guard lock(getSharedData()->mutex_);
+     while (!commands_.empty()) {
+@@ -247,6 +248,7 @@
+         running_ = false;
+     } else if (command_prefix == "quit") {
+         std::cerr << "[command] " << command << std::endl;
+-        exit(0);
++        std::cout.flush();
++        std::_Exit(0); // The input thread can still be blocked in getline().
+     }
+ }

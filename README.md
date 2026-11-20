@@ -1,13 +1,15 @@
 # xiaqi
 
-重新开始的下棋 AI 项目。当前仅保留 Python/PyTorch GPU 开发环境。
+重新开始的下棋 AI 项目，使用 Docker 提供 Python/PyTorch GPU 开发环境。
 旧版代码和资料保留在 `Zero-TTT` 分支。
+
+9×9 围棋推理和自对弈见 [MiniZero 构建与运行](third_party/README.md#minizero)。
 
 ## 开发环境
 
 需要 Docker Compose，以及可供 Linux 容器使用的 NVIDIA GPU。
 沿用基础镜像 `pytorch/pytorch:2.13.0-cuda13.2-cudnn9-devel`，
-提供 Python、PyTorch、CUDA、cuDNN、Triton 和 C/C++ 编译工具，不额外安装业务依赖。
+提供 Python、PyTorch、CUDA、cuDNN、Triton、C/C++ 编译工具和 MiniZero 的构建依赖。
 
 在仓库根目录构建并进入容器：
 
