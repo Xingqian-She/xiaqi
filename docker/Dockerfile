@@ -31,5 +31,25 @@ RUN git init --quiet /tmp/minizero-ale \
     && cmake --install /tmp/minizero-ale/build \
     && rm -rf /tmp/minizero-ale
 
+ENV PG_MAJOR=19
+
+# Keep the PGDG cluster configuration in the image and initialize data on the volume.
+RUN . /etc/os-release \
+    && install -d /etc/apt/keyrings \
+    && wget --no-verbose --timeout=30 --tries=3 -O /etc/apt/keyrings/postgresql.asc \
+        https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    && fingerprint=$(gpg --batch --show-keys --with-colons /etc/apt/keyrings/postgresql.asc | awk -F: '$1 == "fpr" { print $10; exit }') \
+    && test "$fingerprint" = B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8 \
+    && printf 'deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' \
+        "$VERSION_CODENAME" > /etc/apt/sources.list.d/postgresql.list \
+    && apt-get -o Acquire::Retries=3 -o Acquire::Languages=none update \
+    && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install --yes --no-install-recommends \
+        "postgresql-$PG_MAJOR" \
+    && pg_conftool "$PG_MAJOR" main set listen_addresses localhost \
+    && rm -rf "/var/lib/postgresql/$PG_MAJOR/main" /var/lib/apt/lists/*
+
+COPY docker/dev-entrypoint.py /usr/local/bin/xiaqi-dev-entrypoint.py
+
 WORKDIR /workspace
+ENTRYPOINT ["python", "/usr/local/bin/xiaqi-dev-entrypoint.py"]
 CMD ["/bin/bash"]

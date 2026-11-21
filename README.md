@@ -9,11 +9,12 @@
 
 需要 Docker Compose，以及可供 Linux 容器使用的 NVIDIA GPU。
 沿用基础镜像 `pytorch/pytorch:2.13.0-cuda13.2-cudnn9-devel`，
-提供 Python、PyTorch、CUDA、cuDNN、Triton、C/C++ 编译工具和 MiniZero 的构建依赖。
+提供 Python、PyTorch、CUDA、cuDNN 和 Triton。开发镜像还包含 C/C++ 编译工具、MiniZero 的构建依赖和 PostgreSQL 19。
 
-在仓库根目录构建并进入容器：
+在仓库根目录创建数据卷、构建并进入容器。重复执行 `docker volume create` 会复用同名卷。
 
 ```powershell
+docker volume create xiaqi-postgresql-data
 docker compose build dev
 docker compose run --rm dev
 ```
@@ -28,6 +29,16 @@ docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --b
 ```
 
 仓库挂载到 `/workspace`，修改代码无需重建镜像；输入 `exit` 退出容器。
+
+### PostgreSQL
+
+开发容器启动时会启动 PostgreSQL。在容器的终端中用下面的命令连接，输入 `\q` 退出。
+
+```bash
+runuser -u postgres -- psql -d postgres
+```
+
+数据库监听容器内的 `localhost:5432`。数据文件保存在独立的 `xiaqi-postgresql-data` 卷中，容器退出或重建后可以继续使用。更换容器前先退出原容器，同一时间由一个开发容器使用该卷。换机器或升级 PostgreSQL 大版本时，可以先用 `pg_dump -Fc` 导出，再用 `pg_restore` 恢复。
 
 ## 检查环境
 

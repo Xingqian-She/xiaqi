@@ -16,3 +16,11 @@ services:
       - type: bind
         source: .
         target: /workspace
+      - type: volume
+        source: postgresql-data
+        target: /var/lib/postgresql
+
+volumes:
+  postgresql-data:
+    name: xiaqi-postgresql-data
+    external: true
