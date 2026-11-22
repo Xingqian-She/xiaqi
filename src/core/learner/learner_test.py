@@ -16,7 +16,6 @@ from ...data_types.learner_config.learner_config import LearnerConfig
 from ...data_types.pool_status.pool_status import PoolStatus
 from ...data_types.step_metrics.step_metrics import StepMetrics
 from ...data_types.training_samples.training_samples import TrainingSamples
-from ..model.transformer.transformer import Transformer
 from .learner import Learner
 
 
@@ -48,43 +47,6 @@ class LearnerTest(unittest.TestCase):
         value = np.array([[-1], [0], [1]], dtype=np.float32)
         self.samples = TrainingSamples(features, policy, value)
         self.make_optimizer = partial(torch.optim.AdamW, lr=0.01, weight_decay=0.02)
-
-    def test_weight_decay_skips_cls_token_and_channel_scales(self) -> None:
-        model = Transformer(
-            board_size=9,
-            in_channels=18,
-            model_dim=16,
-            num_heads=2,
-            ffn_hidden_dim=24,
-            num_layers=1,
-            value_hidden_dim=8,
-        )
-        layer_scale = nn.Parameter(torch.full((16,), 1e-5))
-        model.register_parameter("layer_scale", layer_scale)
-        optimizer = self.make_optimizer(model.parameters())
-        Learner(lambda: model, lambda _: optimizer, self.config)
-
-        no_decay = (
-            model.cls_token,
-            layer_scale,
-            model.encoder.blocks[0].attention_norm.weight,
-        )
-        decay = (model.stem.conv.weight, model.point_head.weight)
-        before = {param: param.detach().clone() for param in (*no_decay, *decay)}
-        for param in before:
-            param.grad = torch.zeros_like(param)
-        optimizer.step()
-
-        for param in no_decay:
-            torch.testing.assert_close(param, before[param], rtol=0, atol=0)
-        for param in decay:
-            torch.testing.assert_close(param, before[param] * (1 - 0.01 * 0.02))
-
-        for param in no_decay:
-            param.grad = torch.ones_like(param)
-        optimizer.step()
-        for param in no_decay:
-            self.assertFalse(torch.equal(param, before[param]))
 
     def test_updates_once_after_readiness_threshold(self) -> None:
         model = TinyModel().eval()
@@ -181,112 +143,6 @@ class LearnerTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     replace(self.config, **changes)
 
-    def test_checkpoint_restores_weights_optimizer_and_step(self) -> None:
-        learner = Learner(TinyModel, self.make_optimizer, self.config)
-        learner.add_samples(self.samples)
-        self.assertEqual(learner.step().step, 1)
-
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "learner.pt"
-            learner.save_checkpoint(path)
-            original = torch.load(path, weights_only=True)
-
-            resumed = Learner(
-                TinyModel, partial(torch.optim.AdamW, lr=0.5), self.config
-            )
-            model = resumed.get_inference_model()
-            resumed.load_checkpoint(str(path))
-            self.assertIs(resumed.get_inference_model(), model)
-            self.assertEqual(resumed.pool_status(), PoolStatus(0, 0, False))
-            self.assertIsNone(resumed.step())
-            resumed.save_checkpoint(path)
-            restored = torch.load(path, weights_only=True)
-
-        self.assertEqual(set(original), {"model", "optimizer", "step"})
-        self.assertTrue(original["optimizer"]["state"])
-        self.assertEqual(restored["step"], 1)
-        torch.testing.assert_close(restored["model"], original["model"], rtol=0, atol=0)
-        self.assertEqual(
-            restored["optimizer"]["param_groups"], original["optimizer"]["param_groups"]
-        )
-        torch.testing.assert_close(
-            restored["optimizer"]["state"],
-            original["optimizer"]["state"],
-            rtol=0,
-            atol=0,
-        )
-
-        resumed.add_samples(self.samples)
-        self.assertEqual(resumed.step().step, 2)
-        self.assertFalse(
-            torch.equal(model.policy.weight, original["model"]["policy.weight"])
-        )
-
-    def test_checkpoint_restores_legacy_optimizer_parameter_order(self) -> None:
-        model = TinyModel()
-        legacy = self.make_optimizer(model.parameters())
-        for index, param in enumerate(model.parameters(), start=1):
-            param.grad = torch.full_like(param, index)
-        legacy.step()
-
-        resumed_model = TinyModel()
-        resumed = torch.optim.AdamW(resumed_model.parameters(), lr=0.5, weight_decay=0.0)
-        learner = Learner(lambda: resumed_model, lambda _: resumed, self.config)
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "learner.pt"
-            torch.save(
-                {"model": model.state_dict(), "optimizer": legacy.state_dict(), "step": 1},
-                path,
-            )
-            learner.load_checkpoint(path)
-
-        self.assertEqual(
-            [(group["lr"], group["weight_decay"]) for group in resumed.param_groups],
-            [(0.01, 0.02), (0.01, 0.0)],
-        )
-        for old_param, new_param in zip(model.parameters(), resumed_model.parameters()):
-            torch.testing.assert_close(resumed.state[new_param], legacy.state[old_param])
-        learner.add_samples(self.samples)
-        self.assertEqual(learner.step().step, 2)
-
-    def test_failed_checkpoint_write_preserves_previous_file(self) -> None:
-        learner = Learner(TinyModel, self.make_optimizer, self.config)
-
-        def fail_after_write(state, file) -> None:
-            file.write(b"incomplete checkpoint")
-            raise OSError("simulated write failure")
-
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "learner.pt"
-            learner.save_checkpoint(path)
-            previous = path.read_bytes()
-            with patch.object(torch, "save", side_effect=fail_after_write):
-                with self.assertRaisesRegex(OSError, "simulated write failure"):
-                    learner.save_checkpoint(path)
-            self.assertEqual(path.read_bytes(), previous)
-            self.assertEqual(list(path.parent.iterdir()), [path])
-
-    def test_incompatible_optimizer_checkpoint_preserves_training_state(self) -> None:
-        learner = Learner(TinyModel, self.make_optimizer, self.config)
-        learner.add_samples(self.samples)
-        self.assertEqual(learner.step().step, 1)
-        model = learner.get_inference_model()
-        before = deepcopy(model.state_dict())
-
-        with TemporaryDirectory() as directory:
-            path = Path(directory) / "learner.pt"
-            learner.save_checkpoint(path)
-            invalid = torch.load(path, weights_only=True)
-            invalid["model"] = TinyModel().state_dict()
-            invalid["optimizer"]["param_groups"] = []
-            invalid["step"] = 10
-            torch.save(invalid, path)
-            with self.assertRaisesRegex(ValueError, "parameter groups"):
-                learner.load_checkpoint(path)
-
-        torch.testing.assert_close(model.state_dict(), before, rtol=0, atol=0)
-        self.assertEqual(learner.step().step, 2)
-
     def test_compiled_step_updates_raw_model_and_checkpoint_loads_in_eager(
         self,
     ) -> None:
@@ -310,11 +166,13 @@ class LearnerTest(unittest.TestCase):
             path = Path(directory) / "learner.pt"
             learner.save_checkpoint(path)
             resumed = Learner(TinyModel, self.make_optimizer, self.config)
+            resumed_model = resumed.get_inference_model()
             resumed.load_checkpoint(path)
 
-        torch.testing.assert_close(
-            resumed.get_inference_model().state_dict(), model.state_dict()
-        )
+        self.assertIs(resumed.get_inference_model(), resumed_model)
+        torch.testing.assert_close(resumed_model.state_dict(), model.state_dict())
+        self.assertEqual(resumed.pool_status(), PoolStatus(0, 0, False))
+        self.assertIsNone(resumed.step())
         resumed.add_samples(self.samples)
         self.assertEqual(resumed.step().step, 2)
 

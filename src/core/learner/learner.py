@@ -1,11 +1,8 @@
 """从内存经验池抽样并更新围棋策略与价值网络。"""
 
 from collections.abc import Callable, Iterable
-from copy import deepcopy
 from os import PathLike
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import torch
@@ -16,6 +13,8 @@ from ...data_types.learner_config.learner_config import LearnerConfig
 from ...data_types.pool_status.pool_status import PoolStatus
 from ...data_types.step_metrics.step_metrics import StepMetrics
 from ...data_types.training_samples.training_samples import TrainingSamples
+from .checkpoint import checkpoint
+from .optimizer.optimizer import prepare_optimizer
 from .replay_buffer.replay_buffer import ReplayBuffer
 from .rotation.rotation import random_rotate_samples
 
@@ -38,51 +37,12 @@ class Learner:
         self._step = 0
 
         self._model = make_model().to(self._device)
-        self._optimizer = make_optimizer(self._model.parameters())
-        # LayerScale 向量、归一化参数和偏置由维度规则覆盖。
-        no_decay = {
-            param
-            for name, param in self._model.named_parameters(remove_duplicate=False)
-            if name.rsplit(".", 1)[-1] == "cls_token"
-            or (not isinstance(param, nn.UninitializedParameter) and param.ndim <= 1)
-        }
-        # 保留工厂原有的组内顺序，用于拆分旧检查点中的参数 ID。
-        self._no_decay_masks = [
-            ["weight_decay" in group and param in no_decay for param in group["params"]]
-            for group in self._optimizer.param_groups
-        ]
-        self._optimizer.param_groups[:] = self._split_weight_decay_groups(
-            self._optimizer.param_groups
+        self._optimizer, self._normalize_optimizer_state = prepare_optimizer(
+            self._model, make_optimizer
         )
         self._train_model = (
             torch.compile(self._model) if config.compile_model else self._model
         )
-
-    def _split_weight_decay_groups(
-        self, groups: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        split_groups = []
-        for group, mask in zip(groups, self._no_decay_masks, strict=True):
-            params = group["params"]
-            if len(params) != len(mask):
-                raise ValueError("Checkpoint optimizer parameter group size does not match.")
-            if not any(mask):
-                split_groups.append(group)
-                continue
-
-            for skip_decay in (False, True):
-                indices = [index for index, skip in enumerate(mask) if skip == skip_decay]
-                if not indices:
-                    continue
-                new_group = {**group, "params": [params[index] for index in indices]}
-                if "param_names" in group:
-                    new_group["param_names"] = [
-                        group["param_names"][index] for index in indices
-                    ]
-                if skip_decay:
-                    new_group["weight_decay"] = 0.0
-                split_groups.append(new_group)
-        return split_groups
 
     def add_samples(
         self,
@@ -137,50 +97,18 @@ class Learner:
 
     def save_checkpoint(self, path: str | PathLike[str]) -> None:
         """保存训练状态，写入完成后替换目标文件。"""
-        destination = Path(path)
-        state = {
-            "model": self._model.state_dict(),
-            "optimizer": self._optimizer.state_dict(),
-            "step": self._step,
-        }
-        pending = NamedTemporaryFile(
-            dir=destination.parent, prefix=".checkpoint-", delete=False
+        checkpoint.save_checkpoint(
+            path, model=self._model, optimizer=self._optimizer, step=self._step
         )
-        pending_path = Path(pending.name)
-        try:
-            with pending:
-                torch.save(state, pending)
-            pending_path.replace(destination)
-        finally:
-            pending_path.unlink(missing_ok=True)
 
     def load_checkpoint(self, path: str | PathLike[str]) -> None:
         """就地恢复模型与优化器，保留训练前向对同一模型的引用。"""
-        state = torch.load(path, map_location="cpu", weights_only=True)
-        model_state = state["model"]
-        optimizer_state = state["optimizer"]
-        step = state["step"]
-        if type(step) is not int or step < 0:
-            raise ValueError("Checkpoint step must be a nonnegative integer.")
-
-        groups = optimizer_state["param_groups"]
-        # 未拆分的检查点沿用优化器工厂给出的组数。
-        if len(groups) == len(self._no_decay_masks):
-            optimizer_state = {
-                **optimizer_state,
-                "param_groups": self._split_weight_decay_groups(groups),
-            }
-
-        previous_model = deepcopy(self._model.state_dict())
-        previous_optimizer = deepcopy(self._optimizer.state_dict())
-        try:
-            self._model.load_state_dict(model_state)
-            self._optimizer.load_state_dict(optimizer_state)
-        except Exception:
-            self._model.load_state_dict(previous_model)
-            self._optimizer.load_state_dict(previous_optimizer)
-            raise
-        self._step = step
+        self._step = checkpoint.load_checkpoint(
+            path,
+            model=self._model,
+            optimizer=self._optimizer,
+            normalize_optimizer_state=self._normalize_optimizer_state,
+        )
 
     def get_inference_model(self) -> nn.Module:
         """返回调用方在训练步之间用于只读访问的原始模型。"""
