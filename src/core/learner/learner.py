@@ -5,7 +5,7 @@ from copy import deepcopy
 from os import PathLike
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import torch
@@ -39,9 +39,50 @@ class Learner:
 
         self._model = make_model().to(self._device)
         self._optimizer = make_optimizer(self._model.parameters())
+        # LayerScale 向量、归一化参数和偏置由维度规则覆盖。
+        no_decay = {
+            param
+            for name, param in self._model.named_parameters(remove_duplicate=False)
+            if name.rsplit(".", 1)[-1] == "cls_token"
+            or (not isinstance(param, nn.UninitializedParameter) and param.ndim <= 1)
+        }
+        # 保留工厂原有的组内顺序，用于拆分旧检查点中的参数 ID。
+        self._no_decay_masks = [
+            ["weight_decay" in group and param in no_decay for param in group["params"]]
+            for group in self._optimizer.param_groups
+        ]
+        self._optimizer.param_groups[:] = self._split_weight_decay_groups(
+            self._optimizer.param_groups
+        )
         self._train_model = (
             torch.compile(self._model) if config.compile_model else self._model
         )
+
+    def _split_weight_decay_groups(
+        self, groups: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        split_groups = []
+        for group, mask in zip(groups, self._no_decay_masks, strict=True):
+            params = group["params"]
+            if len(params) != len(mask):
+                raise ValueError("Checkpoint optimizer parameter group size does not match.")
+            if not any(mask):
+                split_groups.append(group)
+                continue
+
+            for skip_decay in (False, True):
+                indices = [index for index, skip in enumerate(mask) if skip == skip_decay]
+                if not indices:
+                    continue
+                new_group = {**group, "params": [params[index] for index in indices]}
+                if "param_names" in group:
+                    new_group["param_names"] = [
+                        group["param_names"][index] for index in indices
+                    ]
+                if skip_decay:
+                    new_group["weight_decay"] = 0.0
+                split_groups.append(new_group)
+        return split_groups
 
     def add_samples(
         self,
@@ -121,6 +162,14 @@ class Learner:
         step = state["step"]
         if type(step) is not int or step < 0:
             raise ValueError("Checkpoint step must be a nonnegative integer.")
+
+        groups = optimizer_state["param_groups"]
+        # 未拆分的检查点沿用优化器工厂给出的组数。
+        if len(groups) == len(self._no_decay_masks):
+            optimizer_state = {
+                **optimizer_state,
+                "param_groups": self._split_weight_decay_groups(groups),
+            }
 
         previous_model = deepcopy(self._model.state_dict())
         previous_optimizer = deepcopy(self._optimizer.state_dict())

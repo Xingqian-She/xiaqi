@@ -16,6 +16,7 @@ from ...data_types.learner_config.learner_config import LearnerConfig
 from ...data_types.pool_status.pool_status import PoolStatus
 from ...data_types.step_metrics.step_metrics import StepMetrics
 from ...data_types.training_samples.training_samples import TrainingSamples
+from ..model.transformer.transformer import Transformer
 from .learner import Learner
 
 
@@ -47,6 +48,43 @@ class LearnerTest(unittest.TestCase):
         value = np.array([[-1], [0], [1]], dtype=np.float32)
         self.samples = TrainingSamples(features, policy, value)
         self.make_optimizer = partial(torch.optim.AdamW, lr=0.01, weight_decay=0.02)
+
+    def test_weight_decay_skips_cls_token_and_channel_scales(self) -> None:
+        model = Transformer(
+            board_size=9,
+            in_channels=18,
+            model_dim=16,
+            num_heads=2,
+            ffn_hidden_dim=24,
+            num_layers=1,
+            value_hidden_dim=8,
+        )
+        layer_scale = nn.Parameter(torch.full((16,), 1e-5))
+        model.register_parameter("layer_scale", layer_scale)
+        optimizer = self.make_optimizer(model.parameters())
+        Learner(lambda: model, lambda _: optimizer, self.config)
+
+        no_decay = (
+            model.cls_token,
+            layer_scale,
+            model.encoder.blocks[0].attention_norm.weight,
+        )
+        decay = (model.stem.conv.weight, model.point_head.weight)
+        before = {param: param.detach().clone() for param in (*no_decay, *decay)}
+        for param in before:
+            param.grad = torch.zeros_like(param)
+        optimizer.step()
+
+        for param in no_decay:
+            torch.testing.assert_close(param, before[param], rtol=0, atol=0)
+        for param in decay:
+            torch.testing.assert_close(param, before[param] * (1 - 0.01 * 0.02))
+
+        for param in no_decay:
+            param.grad = torch.ones_like(param)
+        optimizer.step()
+        for param in no_decay:
+            self.assertFalse(torch.equal(param, before[param]))
 
     def test_updates_once_after_readiness_threshold(self) -> None:
         model = TinyModel().eval()
@@ -183,6 +221,33 @@ class LearnerTest(unittest.TestCase):
         self.assertFalse(
             torch.equal(model.policy.weight, original["model"]["policy.weight"])
         )
+
+    def test_checkpoint_restores_legacy_optimizer_parameter_order(self) -> None:
+        model = TinyModel()
+        legacy = self.make_optimizer(model.parameters())
+        for index, param in enumerate(model.parameters(), start=1):
+            param.grad = torch.full_like(param, index)
+        legacy.step()
+
+        resumed_model = TinyModel()
+        resumed = torch.optim.AdamW(resumed_model.parameters(), lr=0.5, weight_decay=0.0)
+        learner = Learner(lambda: resumed_model, lambda _: resumed, self.config)
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "learner.pt"
+            torch.save(
+                {"model": model.state_dict(), "optimizer": legacy.state_dict(), "step": 1},
+                path,
+            )
+            learner.load_checkpoint(path)
+
+        self.assertEqual(
+            [(group["lr"], group["weight_decay"]) for group in resumed.param_groups],
+            [(0.01, 0.02), (0.01, 0.0)],
+        )
+        for old_param, new_param in zip(model.parameters(), resumed_model.parameters()):
+            torch.testing.assert_close(resumed.state[new_param], legacy.state[old_param])
+        learner.add_samples(self.samples)
+        self.assertEqual(learner.step().step, 2)
 
     def test_failed_checkpoint_write_preserves_previous_file(self) -> None:
         learner = Learner(TinyModel, self.make_optimizer, self.config)
