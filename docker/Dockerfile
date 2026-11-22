@@ -44,7 +44,7 @@ RUN . /etc/os-release \
         "$VERSION_CODENAME" > /etc/apt/sources.list.d/postgresql.list \
     && apt-get -o Acquire::Retries=3 -o Acquire::Languages=none update \
     && DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install --yes --no-install-recommends \
-        "postgresql-$PG_MAJOR" \
+        "postgresql-$PG_MAJOR" python3-psycopg \
     && pg_conftool "$PG_MAJOR" main set listen_addresses localhost \
     && rm -rf "/var/lib/postgresql/$PG_MAJOR/main" /var/lib/apt/lists/*
 

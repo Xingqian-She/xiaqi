@@ -40,6 +40,45 @@ runuser -u postgres -- psql -d postgres
 
 数据库监听容器内的 `localhost:5432`。数据文件保存在独立的 `xiaqi-postgresql-data` 卷中，容器退出或重建后可以继续使用。更换容器前先退出原容器，同一时间由一个开发容器使用该卷。换机器或升级 PostgreSQL 大版本时，可以先用 `pg_dump -Fc` 导出，再用 `pg_restore` 恢复。
 
+### 自对弈棋谱入库
+
+用当前 Dockerfile 构建 `dev` 镜像后，在容器终端里创建项目数据库。首次执行前两行，后续进入容器时设置连接串即可。Unix socket 的 peer 认证使用容器当前用户名。
+
+```bash
+runuser -u postgres -- createuser "$(id -un)"
+runuser -u postgres -- createdb --owner="$(id -un)" xiaqi
+export XIAQI_DATABASE_URL='dbname=xiaqi host=/var/run/postgresql'
+psql "$XIAQI_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f src/data/postgresql_store/schema.sql
+```
+
+用 `bash scripts/build_minizero.sh` 构建引擎及其提交号文件，再采集一盘。每盘提交后会打印棋局 ID 和池内入库编号。 [构建与权重](third_party/README.md#构建)
+
+```bash
+python -m scripts.collect_selfplay --pool-id official-go-9x9 --games 1 \
+  --conf-str 'program_quiet=true:zero_num_parallel_games=1:zero_num_threads=1:zero_disable_resign_ratio=1'
+```
+
+导入已有输出文件时，给原采集批次指定一个 UUID，并传入当时的权重 SHA-256、MiniZero 提交号和生效配置文件。中断后可以用同一批次 UUID 和原顺序重新导入。
+
+```bash
+python -m scripts.collect_selfplay --pool-id official-go-9x9 --record-file record.txt \
+  --source-run-id "$source_run_id" --model-sha256 "$model_sha256" \
+  --minizero-commit "$minizero_commit" --effective-config effective.cfg
+```
+
+通过 `psql` 查看最近写入的记录。
+
+```bash
+psql "$XIAQI_DATABASE_URL" -c 'SELECT pool_id, ingest_seq, game_id FROM games ORDER BY pool_id, ingest_seq DESC LIMIT 5'
+```
+
+存储测试会在所连接的数据库内创建临时测试 schema。 [数据设计](PostgreSQL.md)
+
+```bash
+XIAQI_TEST_DATABASE_URL="$XIAQI_DATABASE_URL" \
+  python -m unittest -v src.data.postgresql_store.postgresql_store_test
+```
+
 ## 检查环境
 
 ```powershell

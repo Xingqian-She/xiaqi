@@ -38,4 +38,12 @@ cmake -S "$scratch_dir/source" -B "$build_dir" -G Ninja \
     -DCMAKE_CXX_FLAGS_RELEASE='-O3 -DNDEBUG -g0' \
     -DCMAKE_PREFIX_PATH="$torch_prefix" -DPython_EXECUTABLE="$(command -v python)"
 cmake --build "$build_dir" --target "$target" --parallel "${CMAKE_BUILD_PARALLEL_LEVEL:-2}"
-install -D -m 755 "$build_dir/$artifact" "$PWD/build/minizero/go/$artifact"
+artifact_path="$PWD/build/minizero/go/$artifact"
+if [[ "$target" == minizero ]]; then
+    # A failed publication should leave the executable without provenance.
+    rm -f -- "$artifact_path.commit"
+fi
+install -D -m 755 "$build_dir/$artifact" "$artifact_path"
+if [[ "$target" == minizero ]]; then
+    printf '%s\n' "$revision" > "$artifact_path.commit"
+fi
