@@ -12,9 +12,11 @@ import torch
 from torch import Tensor, nn
 from torch.nn.functional import cross_entropy, mse_loss
 
-from ...data.minizero_replay.minizero_replay import TrainingSamples
-from .learner import Learner, LearnerConfig, StepMetrics
-from .replay_buffer.replay_buffer import PoolStatus
+from ...data_types.learner_config.learner_config import LearnerConfig
+from ...data_types.pool_status.pool_status import PoolStatus
+from ...data_types.step_metrics.step_metrics import StepMetrics
+from ...data_types.training_samples.training_samples import TrainingSamples
+from .learner import Learner
 
 
 class TinyModel(nn.Module):

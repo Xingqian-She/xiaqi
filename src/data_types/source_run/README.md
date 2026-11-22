@@ -1,6 +1,6 @@
 # SourceRun
 
-`SourceRun` 保存一次 MiniZero 自对弈采集的来源，由 `PostgreSQLStore.register_source()` 登记。同一批次重试时复用批次 UUID 和原始元数据。 [类型定义](source_run.py) · [来源登记](../README.md#事务与重试)
+`SourceRun` 保存一次 MiniZero 自对弈采集的来源，由 `PostgreSQLStore.register_source()` 登记。同一批次重试时复用批次 UUID 和原始元数据。 [类型定义](source_run.py) · [来源登记](../../data/postgresql_store/README.md#事务与重试) · [库内棋谱](../stored_game/README.md)
 
 | 字段 | 含义 |
 | --- | --- |

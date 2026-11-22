@@ -1,6 +1,6 @@
 # StepMetrics
 
-`StepMetrics` 是 `Learner.step()` 完成一次参数更新后返回的指标。三个损失字段均为 Python 浮点数。 [类型定义](step_metrics.py) · [训练步](../README.md#训练步与检查点)
+`StepMetrics` 是 `Learner.step()` 完成一次参数更新后返回的指标。三个损失字段均为 Python 浮点数。 [类型定义](step_metrics.py) · [训练步](../../core/learner/README.md#训练步与检查点)
 
 | 字段 | 含义 |
 | --- | --- |

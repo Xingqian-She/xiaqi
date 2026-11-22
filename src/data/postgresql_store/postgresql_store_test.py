@@ -6,7 +6,8 @@ from pathlib import Path
 from threading import Barrier
 from uuid import uuid4
 
-from .postgresql_store import IngestConflictError, PostgreSQLStore, SourceRun
+from ...data_types.source_run.source_run import SourceRun
+from .postgresql_store import IngestConflictError, PostgreSQLStore
 
 
 DATABASE_URL = os.environ.get("XIAQI_TEST_DATABASE_URL")

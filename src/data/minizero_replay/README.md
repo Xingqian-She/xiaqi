@@ -23,7 +23,7 @@ print(samples.features.shape, samples.policy.shape, samples.value.shape)
 
 ## 输出
 
-返回的 `TrainingSamples` 第 `i` 行对应棋谱的走子下标 `record.sample_range.start + i`。`features` 取该手落子前的特征，`policy` 将 `P` 按权重总和归一化，未列出的动作概率为 `0`。`value` 在黑方回合取 `RE`，白方回合取 `-RE`。 [样本字段与形状](training_samples/README.md)
+返回的 `TrainingSamples` 第 `i` 行对应棋谱的走子下标 `record.sample_range.start + i`。`features` 取该手落子前的特征，`policy` 将 `P` 按权重总和归一化，未列出的动作概率为 `0`。`value` 在黑方回合取 `RE`，白方回合取 `-RE`。 [样本字段与形状](../../data_types/training_samples/README.md)
 
 ## 校验
 

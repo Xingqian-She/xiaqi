@@ -1,12 +1,3 @@
-from dataclasses import dataclass
+"""Compatibility import for existing Move callers."""
 
-
-@dataclass(frozen=True, slots=True)
-class Move:
-    """One recorded action with optional search data and reward."""
-
-    player: int
-    action_id: int
-    policy_weights: tuple[tuple[int, float], ...] = ()
-    search_value: float | None = None
-    reward: float | None = None
+from ....data_types.move.move import Move as Move

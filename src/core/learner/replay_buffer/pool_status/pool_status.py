@@ -1,8 +1,3 @@
-from dataclasses import dataclass
+"""Compatibility import for existing PoolStatus callers."""
 
-
-@dataclass(frozen=True, slots=True)
-class PoolStatus:
-    sample_count: int
-    game_count: int
-    ready: bool
+from .....data_types.pool_status.pool_status import PoolStatus as PoolStatus

@@ -1,6 +1,6 @@
 # MiniZero 文本棋谱解析
 
-将一条 MiniZero Go 棋谱文本解析为 [`GameRecord`](game_record/game_record.py)，其中每手棋用 [`Move`](move/move.py) 表示。解析器只依赖 Python 标准库。 [实现代码](minizero_record.py)
+将一条 MiniZero Go 棋谱文本解析为 `GameRecord`，其中每手棋用 `Move` 表示。解析器只依赖 Python 标准库。 [实现代码](minizero_record.py) · [GameRecord](../../data_types/game_record/README.md) · [Move](../../data_types/move/README.md)
 
 ## 用法
 

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from ....data.minizero_replay.training_samples.training_samples import TrainingSamples
+from ....data_types.training_samples.training_samples import TrainingSamples
 from .rotation import random_rotate_samples
 
 

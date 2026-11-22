@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from ....data.minizero_replay.training_samples.training_samples import TrainingSamples
+from ....data_types.training_samples.training_samples import TrainingSamples
 
 
 def random_rotate_samples(

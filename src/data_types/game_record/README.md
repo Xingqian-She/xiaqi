@@ -1,6 +1,6 @@
 # GameRecord
 
-`GameRecord` 是 `parse_record(text)` 的返回值，包含一条围棋记录的对局信息、走子顺序和训练采样范围。[实现代码](game_record.py) · [解析入口](../minizero_record.py)
+`GameRecord` 是 `parse_record(text)` 的返回值，包含一条围棋记录的对局信息、走子顺序和训练采样范围。 [实现代码](game_record.py) · [解析入口](../../data/minizero_record/minizero_record.py)
 
 | 字段 | 含义 |
 | --- | --- |

@@ -8,7 +8,7 @@
 
 三个数组须为 `float32` 且元素有限，行数相同。`features`、`policy`、`value` 的形状依次为 `(N, 18, n, n)`、`(N, n² + 1)` 和 `(N, 1)`。每行策略非负，概率和与 `1` 的绝对误差最多为 `1e-5`。价值只取 `-1`、`0` 或 `1`。校验成功后直接保存数组引用，调用方应将数组视为只读。有效的空批次直接返回当前池状态。
 
-只要删除最老一盘后仍能保留至少 `target_samples` 条训练位置，池就淘汰该盘。每盘样本数可能不同，池会保留达到目标所需的完整棋局。`pool_status()` 和 `add_samples()` 均返回 `PoolStatus`。 [池状态字段](pool_status/README.md)
+只要删除最老一盘后仍能保留至少 `target_samples` 条训练位置，池就淘汰该盘。每盘样本数可能不同，池会保留达到目标所需的完整棋局。`pool_status()` 和 `add_samples()` 均返回 `PoolStatus`。 [池状态字段](../../../data_types/pool_status/README.md)
 
 ## 抽样
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from .source_run.source_run import SourceRun
+from ...data_types.source_run.source_run import SourceRun
 
 if TYPE_CHECKING:
     from psycopg import Connection

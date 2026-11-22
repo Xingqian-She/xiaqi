@@ -1,11 +1,3 @@
-from dataclasses import dataclass
+"""Compatibility import for existing StepMetrics callers."""
 
-
-@dataclass(frozen=True, slots=True)
-class StepMetrics:
-    step: int
-    policy_loss: float
-    value_loss: float
-    total_loss: float
-    batch_size: int
-    replay_samples: int
+from ....data_types.step_metrics.step_metrics import StepMetrics as StepMetrics

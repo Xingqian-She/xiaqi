@@ -1,13 +1,3 @@
-from dataclasses import dataclass
+"""Compatibility import for existing TrainingSamples callers."""
 
-import numpy as np
-from numpy.typing import NDArray
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class TrainingSamples:
-    """Float32 arrays with aligned rows and shapes (N, C, H, W), (N, A), (N, 1)."""
-
-    features: NDArray[np.float32]
-    policy: NDArray[np.float32]
-    value: NDArray[np.float32]
+from ....data_types.training_samples.training_samples import TrainingSamples as TrainingSamples

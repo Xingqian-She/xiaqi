@@ -4,8 +4,8 @@ import math
 import re
 from collections.abc import Iterator
 
-from .game_record.game_record import GameRecord
-from .move.move import Move
+from ...data_types.game_record.game_record import GameRecord
+from ...data_types.move.move import Move
 
 _SELFPLAY_HEADER = re.compile(
     r"SelfPlay\s+(true|false)\s+([0-9]+)\s+([0-9]+)\s+(\S+)\s+"

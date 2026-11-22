@@ -1,11 +1,3 @@
-from dataclasses import dataclass
-from uuid import UUID
+"""Compatibility import for existing SourceRun callers."""
 
-
-@dataclass(frozen=True)
-class SourceRun:
-    source_run_id: UUID
-    pool_id: str
-    model_sha256: str
-    minizero_commit: str
-    effective_config: str
+from ....data_types.source_run.source_run import SourceRun as SourceRun

@@ -5,6 +5,8 @@
 
 9×9 围棋推理和自对弈见 [MiniZero 构建与运行](third_party/README.md#minizero)。
 
+项目数据类集中在 `src/data_types/`。 [数据类目录](src/data_types/README.md)
+
 ## 开发环境
 
 需要 Docker Compose，以及可供 Linux 容器使用的 NVIDIA GPU。

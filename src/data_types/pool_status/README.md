@@ -1,6 +1,6 @@
 # PoolStatus
 
-`add_samples()` 和 `pool_status()` 返回 `PoolStatus`，用于读取经验池的当前规模和开训状态。 [类型定义](pool_status.py) · [经验池](../README.md)
+`add_samples()` 和 `pool_status()` 返回 `PoolStatus`，用于读取经验池的当前规模和开训状态。 [类型定义](pool_status.py) · [经验池](../../core/learner/replay_buffer/README.md)
 
 | 字段 | 含义 |
 | --- | --- |

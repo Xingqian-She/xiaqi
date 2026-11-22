@@ -3,8 +3,9 @@ from dataclasses import replace
 
 import numpy as np
 
-from ....data.minizero_replay.minizero_replay import TrainingSamples
-from .replay_buffer import PoolStatus, ReplayBuffer
+from ....data_types.pool_status.pool_status import PoolStatus
+from ....data_types.training_samples.training_samples import TrainingSamples
+from .replay_buffer import ReplayBuffer
 
 
 BOARD_SIZE = 3

@@ -12,12 +12,12 @@ import torch
 from torch import nn
 from torch.optim import Optimizer
 
-from ...data.minizero_replay.training_samples.training_samples import TrainingSamples
-from .learner_config.learner_config import LearnerConfig
-from .replay_buffer.pool_status.pool_status import PoolStatus
+from ...data_types.learner_config.learner_config import LearnerConfig
+from ...data_types.pool_status.pool_status import PoolStatus
+from ...data_types.step_metrics.step_metrics import StepMetrics
+from ...data_types.training_samples.training_samples import TrainingSamples
 from .replay_buffer.replay_buffer import ReplayBuffer
 from .rotation.rotation import random_rotate_samples
-from .step_metrics.step_metrics import StepMetrics
 
 
 class Learner:

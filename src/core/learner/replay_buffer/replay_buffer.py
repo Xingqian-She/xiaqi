@@ -7,8 +7,8 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ....data.minizero_replay.training_samples.training_samples import TrainingSamples
-from .pool_status.pool_status import PoolStatus
+from ....data_types.pool_status.pool_status import PoolStatus
+from ....data_types.training_samples.training_samples import TrainingSamples
 
 
 class ReplayBuffer:

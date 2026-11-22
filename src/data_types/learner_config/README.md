@@ -1,6 +1,6 @@
 # LearnerConfig
 
-`LearnerConfig` 配置模型更新、经验池和训练批次。模型结构和优化器参数由传给 `Learner` 的工厂提供。 [类型定义](learner_config.py) · [调用示例](../README.md#调用)
+`LearnerConfig` 配置模型更新、经验池和训练批次。模型结构和优化器参数由传给 `Learner` 的工厂提供。 [类型定义](learner_config.py) · [调用示例](../../core/learner/README.md#调用)
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |

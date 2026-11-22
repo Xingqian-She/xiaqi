@@ -1,9 +1,9 @@
 import unittest
 from dataclasses import replace
 
-from .game_record.game_record import GameRecord
+from ...data_types.game_record.game_record import GameRecord
+from ...data_types.move.move import Move
 from .minizero_record import RecordParseError, parse_record
-from .move.move import Move
 
 ROOT = "(;GM[go_9x9]RE[-1.000000]OBS[]SZ[9]KM[7.000000]"
 GAME = (

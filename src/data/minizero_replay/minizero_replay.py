@@ -6,9 +6,9 @@ from typing import Literal
 import numpy as np
 from numpy.typing import NDArray
 
-from ..minizero_record.game_record.game_record import GameRecord
-from ..minizero_record.move.move import Move
-from .training_samples.training_samples import TrainingSamples
+from ...data_types.game_record.game_record import GameRecord
+from ...data_types.move.move import Move
+from ...data_types.training_samples.training_samples import TrainingSamples
 
 
 class ReplayError(ValueError):

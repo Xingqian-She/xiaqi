@@ -20,7 +20,7 @@
 psql "$XIAQI_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f src/data/postgresql_store/schema.sql
 ```
 
-用 Psycopg 3 打开 `autocommit=True` 的连接。调用存储方法时，连接应处于事务之外，由模块为每次调用开启事务。示例中的 `source` 是本次采集的 `SourceRun`，`records` 是按顺序筛出的完整棋谱。 [来源字段](source_run/README.md) · [采集脚本](../../../scripts/collect_selfplay.py)
+用 Psycopg 3 打开 `autocommit=True` 的连接。调用存储方法时，连接应处于事务之外，由模块为每次调用开启事务。示例中的 `source` 是本次采集的 `SourceRun`，`records` 是按顺序筛出的完整棋谱。 [来源字段](../../data_types/source_run/README.md) · [采集脚本](../../../scripts/collect_selfplay.py)
 
 ```python
 import os
