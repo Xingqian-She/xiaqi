@@ -23,13 +23,7 @@ print(samples.features.shape, samples.policy.shape, samples.value.shape)
 
 ## 输出
 
-`TrainingSamples` 包含三个 `float32` NumPy 数组。`N` 是训练手数，`n` 是棋盘边长。数组第 `i` 行对应棋谱的走子下标 `record.sample_range.start + i`。
-
-| 字段 | 形状 | 含义 |
-| --- | --- | --- |
-| `features` | `(N, 18, n, n)` | 执行该手前的局面特征，包含棋子历史和当前执子方。 |
-| `policy` | `(N, n² + 1)` | 将 `P` 按权重总和归一化得到的策略目标，未列出的动作概率为 `0`。停一手的编号是 `n²`。 |
-| `value` | `(N, 1)` | 当前执子方视角的终局标签。黑方取 `RE`，白方取 `-RE`。 |
+返回的 `TrainingSamples` 第 `i` 行对应棋谱的走子下标 `record.sample_range.start + i`。`features` 取该手落子前的特征，`policy` 将 `P` 按权重总和归一化，未列出的动作概率为 `0`。`value` 在黑方回合取 `RE`，白方回合取 `-RE`。 [样本字段与形状](training_samples/README.md)
 
 ## 校验
 

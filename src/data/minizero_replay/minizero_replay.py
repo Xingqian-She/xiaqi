@@ -1,7 +1,6 @@
 """Replay a MiniZero Go record and build one game's AlphaZero training batch."""
 
 import math
-from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -9,19 +8,11 @@ from numpy.typing import NDArray
 
 from ..minizero_record.game_record.game_record import GameRecord
 from ..minizero_record.move.move import Move
+from .training_samples.training_samples import TrainingSamples
 
 
 class ReplayError(ValueError):
     """A record could not be replayed into valid training samples."""
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class TrainingSamples:
-    """Float32 arrays in move order with shapes (N, C, H, W), (N, A), (N, 1)."""
-
-    features: NDArray[np.float32]
-    policy: NDArray[np.float32]
-    value: NDArray[np.float32]
 
 
 def _write_policy(

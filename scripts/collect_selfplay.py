@@ -14,7 +14,8 @@ from src.data.minizero_selfplay.minizero_selfplay import (
     read_effective_config,
     selfplay_stdout,
 )
-from src.data.postgresql_store.postgresql_store import PostgreSQLStore, SourceRun
+from src.data.postgresql_store.postgresql_store import PostgreSQLStore
+from src.data.postgresql_store.source_run.source_run import SourceRun
 
 
 def _append_records(store: PostgreSQLStore, source: SourceRun, records: Iterable[str]) -> int:

@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from .source_run.source_run import SourceRun
+
 if TYPE_CHECKING:
     from psycopg import Connection
-
-
-@dataclass(frozen=True)
-class SourceRun:
-    source_run_id: UUID
-    pool_id: str
-    model_sha256: str
-    minizero_commit: str
-    effective_config: str
 
 
 class IngestConflictError(ValueError):
