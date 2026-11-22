@@ -11,7 +11,7 @@
 
 需要 Docker Compose，以及可供 Linux 容器使用的 NVIDIA GPU。
 沿用基础镜像 `pytorch/pytorch:2.13.0-cuda13.2-cudnn9-devel`，
-提供 Python、PyTorch、CUDA、cuDNN 和 Triton。开发镜像还包含 C/C++ 编译工具、MiniZero 的构建依赖和 PostgreSQL 19。
+提供 Python、PyTorch、CUDA、cuDNN 和 Triton。开发镜像还包含 C/C++ 编译工具、MiniZero 的构建依赖、PostgreSQL 19 和 Python 驱动 Psycopg 3。
 
 在仓库根目录创建数据卷、构建并进入容器。重复执行 `docker volume create` 会复用同名卷。
 
