@@ -1,8 +1,11 @@
 """围棋 Transformer 的策略与价值网络。"""
 
+from dataclasses import asdict
+
 import torch
 from torch import Tensor, nn
 
+from ....data_types.transformer_config.transformer_config import TransformerConfig
 from ..encoder.encoder import Encoder
 from ..positional_encoding.axial_rope_2d import AxialRoPE2D
 from ..stem.stem import Stem
@@ -20,6 +23,7 @@ class Transformer(nn.Module):
         ffn_hidden_dim: int,
         num_layers: int,
         value_hidden_dim: int,
+        num_stem_blocks: int = 1,
     ) -> None:
         super().__init__()
         if num_heads <= 0 or model_dim % num_heads != 0:
@@ -28,7 +32,7 @@ class Transformer(nn.Module):
             raise ValueError("value_hidden_dim must be positive")
 
         self.board_size = board_size
-        self.stem = Stem(in_channels, model_dim)
+        self.stem = Stem(in_channels, model_dim, num_blocks=num_stem_blocks)
         rope = AxialRoPE2D(board_size, head_dim=model_dim // num_heads)
         self.encoder = Encoder(model_dim, num_heads, ffn_hidden_dim, num_layers, rope)
 
@@ -43,6 +47,11 @@ class Transformer(nn.Module):
             nn.Linear(value_hidden_dim, 1, bias=False),
             nn.Tanh(),
         )
+
+    @classmethod
+    def from_config(cls, config: TransformerConfig) -> "Transformer":
+        """使用可复用的模型配置构建网络。"""
+        return cls(**asdict(config))
 
     def forward(self, board: Tensor) -> tuple[Tensor, Tensor]:
         """接收 [B, C, n, n]，返回 [B, n² + 1] 的 logits 和 [B, 1] 的价值。"""

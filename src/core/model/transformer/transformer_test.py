@@ -6,6 +6,7 @@ import torch
 from torch import Tensor, nn
 from torch.nn.functional import silu
 
+from ....data_types.transformer_config.transformer_config import TransformerConfig
 from .transformer import Transformer
 
 
@@ -65,6 +66,24 @@ class TransformerTest(unittest.TestCase):
             if isinstance(module, (nn.Conv2d, nn.Linear)):
                 with self.subTest(module=name):
                     self.assertIsNone(module.bias)
+
+    @torch.no_grad()
+    def test_builds_model_with_configured_stem_depth(self) -> None:
+        for num_stem_blocks in (0, 2):
+            with self.subTest(num_stem_blocks=num_stem_blocks):
+                config = TransformerConfig(
+                    board_size=9,
+                    in_channels=self.in_channels,
+                    model_dim=32,
+                    num_heads=4,
+                    ffn_hidden_dim=48,
+                    num_layers=3,
+                    value_hidden_dim=16,
+                    num_stem_blocks=num_stem_blocks,
+                )
+                model = Transformer.from_config(config)
+                self.assertEqual(len(model.stem.residual_stack.blocks), num_stem_blocks)
+                self._assert_outputs(model(self.board), batch_size=2, board_size=9)
 
     def test_backward_on_cpu(self) -> None:
         self._assert_backward("cpu")

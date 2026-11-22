@@ -13,6 +13,7 @@ from src.data_types.source_run.source_run import SourceRun
 | [`GameRecord`](game_record/README.md) | 解析后的对局与训练采样范围。 |
 | [`Move`](move/README.md) | 一手棋的动作与搜索数据。 |
 | [`TrainingSamples`](training_samples/README.md) | 复盘或采样得到的训练数组。 |
+| [`TransformerConfig`](transformer_config/README.md) | 围棋 Transformer 的棋盘尺寸和网络结构配置。 |
 | [`LearnerConfig`](learner_config/README.md) | 模型更新和经验池的配置。 |
 | [`PoolStatus`](pool_status/README.md) | 经验池的当前规模和开训状态。 |
 | [`StepMetrics`](step_metrics/README.md) | 一次模型更新的指标。 |

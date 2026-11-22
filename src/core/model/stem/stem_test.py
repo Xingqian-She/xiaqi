@@ -29,7 +29,7 @@ class StemTest(unittest.TestCase):
 
     @torch.no_grad()
     def test_zero_padding_at_board_edges(self) -> None:
-        stem = Stem(in_channels=1, model_dim=1)
+        stem = Stem(in_channels=1, model_dim=1, num_blocks=0)
         stem.conv.weight.fill_(1.0)
         board = torch.arange(1.0, 10.0).reshape(1, 1, 3, 3)
         expected = torch.tensor(
@@ -37,6 +37,14 @@ class StemTest(unittest.TestCase):
         )
 
         torch.testing.assert_close(stem(board)[0, 0], expected)
+
+    @torch.no_grad()
+    def test_applies_residual_stack_after_input_convolution(self) -> None:
+        board = torch.randn(2, self.in_channels, 9, 9)
+        (block,) = self.stem.residual_stack.blocks
+        projected = self.stem.conv(board)
+
+        torch.testing.assert_close(self.stem(board), projected + block(projected))
 
     def test_backward_on_cpu(self) -> None:
         self._assert_backward("cpu")
