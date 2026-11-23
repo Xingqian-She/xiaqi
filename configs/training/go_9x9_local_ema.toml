@@ -62,3 +62,4 @@ games_per_round = 40
 min_new_games_before_train = 40
 train_steps_per_round = 4
 max_rounds = 100_000
+checkpoint_every_rounds = 10

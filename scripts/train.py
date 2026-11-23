@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any
 
 from src.control.config_io.config_io import load_training_config
-from src.control.training_controller.training_controller import TrainingController
+from src.control.training_controller.training_controller import (
+    TrainingController,
+    TrainingInterrupted,
+)
 
 
 def _print_progress(event: dict[str, Any]) -> None:
@@ -59,8 +62,13 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, RuntimeError, ValueError, psycopg.Error) as error:
         print(f"Training failed: {error}", file=sys.stderr)
         return 1
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as error:
         print("Training interrupted.", file=sys.stderr)
+        if isinstance(error, TrainingInterrupted):
+            if error.checkpoint_error is not None:
+                print(f"Checkpoint save failed ({error.checkpoint_error})", file=sys.stderr)
+            if error.checkpoint_path is not None:
+                print(f'Resume with --resume "{error.checkpoint_path}"', file=sys.stderr)
         return 130
     return 0
 

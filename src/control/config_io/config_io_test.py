@@ -32,9 +32,10 @@ def test_snapshot_round_trip_uses_repository_paths(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("name", ["go_9x9_smoke.toml", "go_9x9_az.toml"])
 def test_existing_presets_use_one_mini_batch_and_ema_is_off(name):
-    learner = load_training_config(_TRAINING_CONFIGS / name).learner
-    assert learner.mini_batch_size is None
-    assert not learner.ema_enabled
+    config = load_training_config(_TRAINING_CONFIGS / name)
+    assert config.learner.mini_batch_size is None
+    assert not config.learner.ema_enabled
+    assert config.schedule.checkpoint_every_rounds == 1
 
 
 def test_local_ema_preset_round_trip(tmp_path):
@@ -48,6 +49,7 @@ def test_local_ema_preset_round_trip(tmp_path):
     assert learner.ema_enabled and learner.ema_tau == 0.05
     assert (schedule.games_per_round, schedule.min_new_games_before_train) == (40, 40)
     assert schedule.train_steps_per_round == 4
+    assert schedule.checkpoint_every_rounds == 10
     assert config.alphazero.num_simulations == 256
     assert not config.selfplay.quiet
 
@@ -76,6 +78,8 @@ def test_local_ema_preset_round_trip(tmp_path):
         ("temperature = 1.0", "temperature = nan", "temperature must be finite"),
         ("[schedule]", "[schedule]\nmax_steps = 2", "[schedule].max_steps"),
         ("max_rounds = 2", "max_rounds = 0", "max_rounds must be an integer"),
+        ("[schedule]", "[schedule]\ncheckpoint_every_rounds = 0", "checkpoint_every_rounds must be an integer"),
+        ("[schedule]", "[schedule]\ncheckpoint_every_rounds = true", "[schedule].checkpoint_every_rounds"),
     ],
 )
 def test_invalid_toml_identifies_the_field(tmp_path, original, changed, field):

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import signal
 from collections import Counter
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from ctypes import c_float
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from shutil import copyfile
+from tempfile import TemporaryDirectory
+from threading import current_thread, main_thread
 from time import monotonic
+from types import FrameType
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
@@ -44,10 +49,20 @@ if TYPE_CHECKING:
     from psycopg import Connection
 
 _PAGE_SIZE = 256
+_SELFPLAY_MODEL_ROOT = Path("/dev/shm")
 
 
 class TrainingRunError(RuntimeError):
     """A training run failed in the phase named in the error message."""
+
+
+class TrainingInterrupted(KeyboardInterrupt):
+    """A training run was interrupted, with the last usable checkpoint if available."""
+
+    def __init__(self, checkpoint_path: Path | None, checkpoint_error: str | None) -> None:
+        super().__init__("Training interrupted.")
+        self.checkpoint_path = checkpoint_path
+        self.checkpoint_error = checkpoint_error
 
 
 class TrainingController:
@@ -76,23 +91,28 @@ class TrainingController:
         self._source_run_id: UUID | None = None
         self._games_committed = 0
         self._last_committed_seq = 0
+        self._checkpoint_safe = False
+        self._last_checkpoint_step = 0
+        self._last_checkpoint_path: Path | None = None
 
         try:
             self._log.open()
-            summary = self._execute(resume, config_path)
+            with TemporaryDirectory(prefix="xiaqi-selfplay-", dir=_SELFPLAY_MODEL_ROOT) as directory:
+                summary = self._execute(resume, config_path, Path(directory) / "model.pt")
             self._phase = "finish"
             self._log.close_metrics()
             self._event("run_finished", round=None, source_run_id=None, **summary)
             self._log.close()
         except KeyboardInterrupt as error:
-            self._abort("run_interrupted", error)
-            raise
+            raise self._interrupt(error) from error
         except Exception as error:
             self._abort("run_failed", error)
             raise TrainingRunError(f"{self._phase}: {error}") from error
         return self._log.directory
 
-    def _execute(self, resume: Path | None, config_path: Path | None) -> dict[str, int | float]:
+    def _execute(
+        self, resume: Path | None, config_path: Path | None, model_path: Path
+    ) -> dict[str, int | float]:
         self._phase = "snapshot_config"
         config, external_model = self._snapshot_config(resume, config_path)
         self._event("run_started", pool_id=config.pool_id, run_dir=self._log.directory)
@@ -105,9 +125,15 @@ class TrainingController:
         )
         if resume is not None:
             self._phase = "restore_checkpoint"
+            resume = resume.resolve()
             self._learner.load_checkpoint(resume)
             self._step = self._learner.step_count
-            self._event("checkpoint_restored", path=resume.resolve())
+            self._last_checkpoint_step = self._step
+            self._last_checkpoint_path = resume
+            self._checkpoint_safe = True
+            self._event("checkpoint_restored", path=resume)
+        else:
+            self._checkpoint_safe = True
         start_step = self._step
 
         self._phase = "backfill_pool"
@@ -128,12 +154,12 @@ class TrainingController:
                     f"Warmup has {status.sample_count} samples. "
                     f"Training requires at least {config.learner.min_train_samples}."
                 )
-            model_path = self._train(warmup_steps)
-        elif external_model is not None:
-            model_path = external_model
+            self._train(warmup_steps)
+            self._save_checkpoint("warmup")
+        if external_model is not None:
+            copyfile(external_model, model_path)
             self._event("initial_model_prepared", path=model_path)
         else:
-            model_path = self._log.selfplay_models / "initial.pt"
             self._export_model(model_path)
 
         summary = self._run_rounds(config, model_path)
@@ -167,6 +193,7 @@ class TrainingController:
         copyfile(selfplay.config_path, base_config)
         selfplay_snapshot = replace(selfplay, config_path=base_config)
         if external_model is not None and selfplay.initial_model is not None:
+            external_model.parent.mkdir()
             copyfile(selfplay.initial_model, external_model)
             selfplay_snapshot = replace(selfplay_snapshot, initial_model=external_model)
         snapshot = replace(config, selfplay=selfplay_snapshot)
@@ -221,8 +248,9 @@ class TrainingController:
             status = self._learner.pool_status()
             round_start_step = self._step
             new_games_ready = pending_games >= schedule.min_new_games_before_train
-            if status.ready and new_games_ready:
-                model_path = self._train(schedule.train_steps_per_round)
+            trained = status.ready and new_games_ready
+            if trained:
+                self._train(schedule.train_steps_per_round)
                 pending_games = 0
             else:
                 self._event(
@@ -234,6 +262,13 @@ class TrainingController:
                     pool_ready=status.ready,
                     new_games_ready=new_games_ready,
                 )
+
+            last_round = round_number == schedule.max_rounds
+            checkpoint_due = round_number % schedule.checkpoint_every_rounds == 0
+            if self._step > self._last_checkpoint_step and (checkpoint_due or last_round):
+                self._save_checkpoint("periodic" if checkpoint_due else "final")
+            if trained and not last_round:
+                self._export_model(model_path)
 
             self._phase = "log_round"
             stats = _result_metrics(result.games_committed, results)
@@ -301,25 +336,28 @@ class TrainingController:
             self._learner.add_samples(samples, position=position)
         return record.black_result, has_samples
 
-    def _train(self, steps: int) -> Path:
+    def _train(self, steps: int) -> None:
         self._phase = "warmup" if self._round is None else "train"
         self._event("training_started", steps=steps, phase=self._phase)
         for _ in range(steps):
-            metrics = self._learner.step()
-            if metrics is None:
-                raise RuntimeError("The replay pool stopped being ready during training.")
-            self._step = metrics.step
-            self._log.log_step(metrics)
+            with _defer_sigint():
+                self._checkpoint_safe = False
+                metrics = self._learner.step()
+                if metrics is None:
+                    raise RuntimeError("The replay pool stopped being ready during training.")
+                self._step = metrics.step
+                self._checkpoint_safe = True
+                self._log.log_step(metrics)
 
-        filename = f"step-{self._step:06d}.pt"
-        self._phase = "save_checkpoint"
-        checkpoint = self._log.checkpoints / filename
-        self._learner.save_checkpoint(checkpoint)
-        self._event("checkpoint_saved", path=checkpoint)
-
-        model = self._log.selfplay_models / filename
-        self._export_model(model)
-        return model
+    def _save_checkpoint(self, reason: Literal["warmup", "periodic", "final", "interrupt"]) -> None:
+        if reason != "interrupt":
+            self._phase = "save_checkpoint"
+        path = self._log.checkpoints / f"step-{self._step:06d}.pt"
+        with _defer_sigint(raise_after=reason != "interrupt"):
+            self._learner.save_checkpoint(path)
+            self._last_checkpoint_step = self._step
+            self._last_checkpoint_path = path
+            self._event("checkpoint_saved", path=path, reason=reason)
 
     def _export_model(self, path: Path) -> None:
         self._phase = "export_model"
@@ -339,15 +377,55 @@ class TrainingController:
         context = {"round": self._round, "step": self._step, "source_run_id": self._source_run_id}
         self._log.event(name, **{**context, **fields})
 
-    def _abort(self, name: str, error: BaseException) -> None:
+    def _interrupt(self, error: KeyboardInterrupt) -> TrainingInterrupted:
+        checkpoint_error = None
+        if not self._checkpoint_safe:
+            checkpoint_error = "Learner state is not ready to save."
+        elif self._last_checkpoint_path is None or self._step > self._last_checkpoint_step:
+            try:
+                self._save_checkpoint("interrupt")
+            except (Exception, KeyboardInterrupt) as save_error:
+                checkpoint_error = str(save_error) or type(save_error).__name__
+        self._abort(
+            "run_interrupted", error, checkpoint_path=self._last_checkpoint_path,
+            checkpoint_error=checkpoint_error,
+        )
+        return TrainingInterrupted(self._last_checkpoint_path, checkpoint_error)
+
+    def _abort(self, name: str, error: BaseException, **fields: Any) -> None:
         with suppress(Exception):
             self._event(
                 name, phase=self._phase, error=str(error) or type(error).__name__,
                 ingest_seq=self._cursor, games_committed=self._games_committed,
-                last_ingest_seq=self._last_committed_seq,
+                last_ingest_seq=self._last_committed_seq, **fields,
             )
         with suppress(Exception):
             self._log.close()
+
+
+@contextmanager
+def _defer_sigint(*, raise_after: bool = True) -> Iterator[None]:
+    """Finish the update or checkpoint write before honoring the CLI's Ctrl+C."""
+    if (
+        current_thread() is not main_thread()
+        or signal.getsignal(signal.SIGINT) is not signal.default_int_handler
+    ):
+        yield
+        return
+
+    interrupted = False
+
+    def remember_interrupt(_signum: int, _frame: FrameType | None) -> None:
+        nonlocal interrupted
+        interrupted = True
+
+    signal.signal(signal.SIGINT, remember_interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, signal.default_int_handler)
+    if interrupted and raise_after:
+        raise KeyboardInterrupt
 
 
 def _check_game_rules(record: GameRecord, source: SourceRun, go: GoRulesConfig) -> None:

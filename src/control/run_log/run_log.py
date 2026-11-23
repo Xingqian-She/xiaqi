@@ -32,7 +32,6 @@ class RunLog:
         self.directory.mkdir(parents=True)
         self._events = (self.directory / "events.jsonl").open("x", encoding="utf-8", buffering=1)
         self.checkpoints.mkdir()
-        self.selfplay_models.mkdir()
 
         from torch.utils.tensorboard import SummaryWriter
 

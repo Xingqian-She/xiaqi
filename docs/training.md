@@ -38,6 +38,7 @@ docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --b
 | 经验池保留目标 `[learner].target_samples` | 64 | 4,000,000 | 500,000 |
 | 每轮更新步数 `[schedule].train_steps_per_round` | 2 | 200 | 4 |
 | 每次启动的最大轮数 `[schedule].max_rounds` | 2 | 300 | 100,000 |
+| 训练检查点保存间隔 `[schedule].checkpoint_every_rounds` | 1 轮 | 1 轮 | 10 轮 |
 
 经验池保存在 CPU 内存中。9×9 的每个样本包含 `18 × 9 × 9` 个特征值、82 个策略值和 1 个价值，三个 `float32` 数组共占 6,164 字节。50 万和 400 万样本的数组分别约占 **2.9 GiB** 和 **23 GiB** 主机内存，进程、整盘保留和组批还需内存。`target_samples` 是按整盘淘汰的保留目标。 [样本形状](../src/data_types/training_samples/README.md) · [经验池实现](../src/core/learner/replay_buffer/README.md)
 
@@ -76,9 +77,11 @@ docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_loc
 | `events.jsonl` | 逐条记录采集、训练、跳过、中断、导出和结束事件。 |
 | `tensorboard/` | 按训练步记录损失，按采集轮记录棋局统计、池规模和耗时。 |
 | `checkpoints/step-*.pt` | 供 `--resume` 使用的训练模型、优化器、已完成步数和开启时的 EMA 权重。 |
-| `selfplay_models/*.pt` | 供 MiniZero 加载的 TorchScript 模型，包含首轮准备好的模型以及各训练阶段后导出的模型。 |
+| `selfplay_models/initial.pt` | 使用 `[selfplay].initial_model` 作为首轮权重时保存的输入副本。 |
 
-本机实验保留每轮生成的检查点和 EMA 推理权重。每 100 个训练轮的这两类文件合计约 33 GiB。 [检查点格式](../src/core/learner/checkpoint/README.md)
+控制器在容器的 `/dev/shm` 中为本次运行创建临时目录。每轮自对弈都用同一路径的 `model.pt`，新推理权重在下一轮采集前覆盖文件，临时目录随运行退出清理。棋谱来源的 `model_sha256` 区分不同模型版本。 [采集来源](../src/data_types/source_run/README.md)
+
+训练检查点按采集轮号定期保存。跳过训练的轮次也计入间隔，有新更新时才写入。预训练完成时保存一次，正常结束时补存当前尚未保存的训练更新。本机 EMA 配置每 10 轮保存一次，按两轮本机验收的平均耗时估算约 69 分钟。 [检查点格式](../src/core/learner/checkpoint/README.md)
 
 联调在两轮中各采集两盘。通过复盘且达到两项开训门槛时，每轮更新两步，总计入库四盘、更新四步。此时 `run_finished` 的 `rounds`、`games_committed` 和 `train_steps` 分别为 `2`、`4` 和 `4`。若出现 `training_skipped`，查看事件中的样本数、新增有效棋局数与对应门槛。运行失败时看 `run_failed` 的 `phase` 和 `error`。 [训练控制器](../src/control/training_controller/README.md) · [日志指标口径](../src/control/run_log/README.md#tensorboard-指标)
 
@@ -104,4 +107,4 @@ docker compose run --rm -T dev bash scripts/train.sh "runs/$xiaqiRunId/config.to
 
 控制器恢复模型、优化器和训练步数，再从同一个 `pool_id` 回填经验池。它创建新的运行目录，采集轮号从 1 开始，`max_rounds` 设定本次启动的轮数。联调续训若再完成四次更新，末尾累计步数为 8。
 
-用 `Ctrl+C` 可以中断运行。已提交的棋谱仍可供下次回填，续训从最后一个已写入的训练检查点开始。 [训练检查点](../src/core/learner/checkpoint/README.md)
+用 `Ctrl+C` 可以中断运行。训练中的更新步会先完成，采集中的 MiniZero 子进程会先收尾。控制器保存最新一致的训练状态，并在终端打印可用于 `--resume` 的路径。最新检查点写入失败时，终端会报告原因，并在已有有效检查点时显示其路径。已提交的棋谱可供续训时回填。 [训练检查点](../src/core/learner/checkpoint/README.md)

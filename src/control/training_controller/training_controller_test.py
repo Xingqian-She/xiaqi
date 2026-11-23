@@ -1,8 +1,13 @@
 import hashlib
 import json
+import signal
+import sys
 from collections import deque
+from contextlib import nullcontext
 from dataclasses import replace
+from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import numpy as np
@@ -27,6 +32,7 @@ class _Database:
         self.pool_id = pool_id
         self.games = []
         self.batches = deque()
+        self.models = []
         self.after_initial_read = None
         self.after_batch = None
         self.other_source = SourceRun(uuid4(), pool_id, "a" * 64, "b" * 40, _RULES)
@@ -59,16 +65,18 @@ class _Database:
         assert config_path.name == "minizero_base.cfg"
         records = self.batches.popleft()
         assert len(records) == games
+        weights = model_path.read_bytes()
+        self.models.append((model_path, weights))
         source = SourceRun(
-            uuid4(), pool_id, hashlib.sha256(model_path.read_bytes()).hexdigest(), "b" * 40, _RULES
+            uuid4(), pool_id, hashlib.sha256(weights).hexdigest(), "b" * 40, _RULES
         )
         on_source_registered(source)
         for record in records:
             game = self.append(source, record)
             on_game_committed(game.game_id, game.ingest_seq)
         if self.after_batch is not None:
-            self.after_batch()
-            self.after_batch = None
+            callback, self.after_batch = self.after_batch, None
+            callback()
         return SelfPlayResult(games, game.ingest_seq, source)
 
 
@@ -104,6 +112,9 @@ def training(tmp_path, monkeypatch):
     config = load_training_config(_ROOT / "configs/training/go_9x9_smoke.toml")
     config = replace(config, runs_dir=tmp_path / "runs")
     db = _Database(config.pool_id)
+    shm = tmp_path / "shm"
+    shm.mkdir()
+    monkeypatch.setattr(controller, "_SELFPLAY_MODEL_ROOT", shm)
     monkeypatch.setattr(controller, "_PAGE_SIZE", 2)
     monkeypatch.setattr(controller, "PostgreSQLReader", lambda connection: connection)
     monkeypatch.setattr(controller, "PostgreSQLStore", lambda connection: connection)
@@ -128,9 +139,17 @@ def test_two_rounds_use_exported_weights_and_resume(training):
     db.batches.extend([[_record(1), _record(-1)], [_record(0), _record(1)]])
     first = controller.TrainingController(config, db).run()
     checkpoints = first / "checkpoints"
-    model = first / "selfplay_models" / "step-000002.pt"
+    (first_path, first_weights), (second_path, second_weights) = db.models
+    assert first_path == second_path
+    assert first_path.name == "model.pt"
+    assert first_path.parent.parent == controller._SELFPLAY_MODEL_ROOT
+    assert not first_path.parent.exists()
+    assert not (first / "selfplay_models").exists()
+    assert first_weights != second_weights
     second_source = _events(first, "selfplay_started")[1]
-    assert second_source["model_sha256"] == hashlib.sha256(model.read_bytes()).hexdigest()
+    assert second_source["model_sha256"] == hashlib.sha256(second_weights).hexdigest()
+    assert [event["step"] for event in _events(first, "model_exported")] == [0, 2]
+    assert [event["step"] for event in _events(first, "checkpoint_saved")] == [2, 4]
     assert [event["step"] for event in _events(first, "round_finished")] == [2, 4]
     logs = _tensorboard(first)
     assert [item.step for item in logs.Scalars("train/total_loss")] == [1, 2, 3, 4]
@@ -147,6 +166,7 @@ def test_two_rounds_use_exported_weights_and_resume(training):
     assert _events(resumed, "pool_restored")[0]["sample_count"] == 8
     assert _events(resumed, "selfplay_started")[0]["step"] == 5
     assert _events(resumed, "selfplay_started")[0]["round"] == 1
+    assert [event["step"] for event in _events(resumed, "checkpoint_saved")] == [5, 7]
     assert [item.step for item in _tensorboard(resumed).Scalars("train/total_loss")] == [5, 6, 7]
     metadata = json.loads((resumed / "run.json").read_text(encoding="utf-8"))
     assert metadata["resume"] == str(resume_path)
@@ -168,6 +188,8 @@ def test_cumulative_gate_and_win_rates_use_only_this_runs_games(training):
     directory = controller.TrainingController(config, db).run()
     first, second, third = _events(directory, "round_finished")
     assert (first["train_steps"], second["train_steps"], third["train_steps"]) == (0, 2, 0)
+    assert [event["step"] for event in _events(directory, "checkpoint_saved")] == [2]
+    assert db.models[0] == db.models[1]
     assert (first["games_scored"], first["games_with_samples"], first["sample_count"]) == (2, 1, 4)
     assert (first["black_win_rate"], first["white_win_rate"], first["draw_rate"]) == (0.5, 0.5, 0.0)
     assert second["games_scored"] == second["draw_rate"] == 1
@@ -184,6 +206,27 @@ def test_cumulative_gate_and_win_rates_use_only_this_runs_games(training):
         assert summary[tag] == pytest.approx(1 / 3)
 
 
+def test_checkpoint_interval_counts_skipped_rounds_and_saves_final_update(training):
+    config, db = training
+    config = replace(config, schedule=replace(config.schedule, max_rounds=3, checkpoint_every_rounds=2))
+    db.batches.extend([
+        [_record(1), _record(-1)],
+        [_MALFORMED, _MALFORMED],
+        [_record(-1), _record(1)],
+    ])
+    directory = controller.TrainingController(config, db).run()
+
+    assert [event["train_steps"] for event in _events(directory, "round_finished")] == [2, 0, 2]
+    saved = _events(directory, "checkpoint_saved")
+    assert [(event["round"], event["step"], event["reason"]) for event in saved] == [
+        (2, 2, "periodic"),
+        (3, 4, "final"),
+    ]
+    assert sorted(path.name for path in (directory / "checkpoints").glob("*.pt")) == [
+        "step-000002.pt", "step-000004.pt",
+    ]
+
+
 def test_exports_ema_parameters_for_the_next_round(training):
     config, db = training
     config = replace(
@@ -194,8 +237,8 @@ def test_exports_ema_parameters_for_the_next_round(training):
     directory = controller.TrainingController(config, db).run()
     checkpoint = directory / "checkpoints/step-000002.pt"
     state = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    model_path = directory / "selfplay_models/step-000002.pt"
-    exported = torch.jit.load(str(model_path), map_location="cpu").model
+    _, weights = db.models[1]
+    exported = torch.jit.load(BytesIO(weights), map_location="cpu").model
 
     parameters = dict(exported.named_parameters())
     torch.testing.assert_close(parameters, state["ema_model"], rtol=0, atol=0)
@@ -205,7 +248,7 @@ def test_exports_ema_parameters_for_the_next_round(training):
     )
     assert (
         _events(directory, "selfplay_started")[1]["model_sha256"]
-        == hashlib.sha256(model_path.read_bytes()).hexdigest()
+        == hashlib.sha256(weights).hexdigest()
     )
 
 
@@ -224,6 +267,9 @@ def test_external_initial_model_is_pinned_in_snapshot(training, tmp_path):
     frozen_model = directory / "selfplay_models/initial.pt"
     assert snapshot.selfplay.initial_model == frozen_model
     assert frozen_model.read_bytes() == external_model.read_bytes()
+    model_path, weights = db.models[0]
+    assert model_path.name == "model.pt" and not model_path.exists()
+    assert weights == frozen_model.read_bytes()
     metadata = json.loads((directory / "run.json").read_text(encoding="utf-8"))
     assert metadata["initial_model"] == str(external_model)
     assert metadata["initial_weight_source"] == "initial_model"
@@ -245,7 +291,7 @@ def test_export_failure_keeps_the_checkpoint(training, monkeypatch):
     export_model = controller.export_minizero_torchscript
 
     def export(model, path):
-        if path.name != "initial.pt":
+        if path.exists():
             raise OSError("Export test failure.")
         export_model(model, path)
 
@@ -257,6 +303,7 @@ def test_export_failure_keeps_the_checkpoint(training, monkeypatch):
     assert torch.load(checkpoint, map_location="cpu", weights_only=True)["step"] == 2
     assert _events(directory, "checkpoint_saved")[0]["path"] == str(checkpoint)
     assert _events(directory, "run_failed")[0]["phase"] == "export_model"
+    assert not db.models[0][0].parent.exists()
 
 
 def test_environment_failure_keeps_cursor_at_last_processed_game(training):
@@ -269,3 +316,102 @@ def test_environment_failure_keeps_cursor_at_last_processed_game(training):
     assert error["ingest_seq"] == 1
     assert error["last_ingest_seq"] == 2
     assert not _events(directory, "game_skipped")
+
+
+def test_cli_interrupt_while_collecting_saves_step_zero(training, monkeypatch, capsys):
+    from scripts import train
+
+    config, db = training
+    db.batches.append([_record(1), _record(-1)])
+
+    def interrupt():
+        raise KeyboardInterrupt
+
+    db.after_batch = interrupt
+    monkeypatch.setattr(train, "load_training_config", lambda _: config)
+    monkeypatch.setenv("XIAQI_DATABASE_URL", "test")
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(
+        Error=RuntimeError, connect=lambda *args, **kwargs: nullcontext(db),
+    ))
+
+    assert train.main(["--config", str(_ROOT / "configs/training/go_9x9_smoke.toml")]) == 130
+    directory = next(config.runs_dir.iterdir())
+    checkpoint = directory / "checkpoints/step-000000.pt"
+    assert torch.load(checkpoint, map_location="cpu", weights_only=True)["step"] == 0
+    assert f'--resume "{checkpoint}"' in capsys.readouterr().err
+    stopped = _events(directory, "run_interrupted")[0]
+    assert stopped["phase"] == "selfplay"
+    assert stopped["games_committed"] == stopped["last_ingest_seq"] == 2
+    assert stopped["checkpoint_path"] == str(checkpoint)
+    assert stopped["checkpoint_error"] is None
+    assert not db.models[0][0].parent.exists()
+
+
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_sigint_finishes_step_and_preserves_a_resumable_checkpoint(training, monkeypatch, save_fails):
+    config, db = training
+    config = replace(config, learner=replace(config.learner, ema_enabled=True))
+    db.batches.extend([[_record(1), _record(-1)], [_record(0), _record(1)]])
+    original_step = controller.Learner.step
+    original_save = controller.Learner.save_checkpoint
+
+    def step(learner):
+        if learner.step_count == 2:
+            signal.raise_signal(signal.SIGINT)
+        return original_step(learner)
+
+    def save(learner, path):
+        if save_fails and learner.step_count == 3:
+            raise OSError("Cannot write checkpoint.")
+        original_save(learner, path)
+
+    previous_handler = signal.getsignal(signal.SIGINT)
+    with monkeypatch.context() as patch:
+        patch.setattr(controller.Learner, "step", step)
+        patch.setattr(controller.Learner, "save_checkpoint", save)
+        with pytest.raises(controller.TrainingInterrupted) as caught:
+            controller.TrainingController(config, db).run()
+
+    directory = next(config.runs_dir.iterdir())
+    stopped = _events(directory, "run_interrupted")[0]
+    assert stopped["phase"] == "train" and stopped["step"] == 3
+    assert [item.step for item in _tensorboard(directory).Scalars("train/total_loss")] == [1, 2, 3]
+    assert signal.getsignal(signal.SIGINT) is previous_handler
+    assert not db.models[0][0].parent.exists()
+
+    step_to_resume = 2 if save_fails else 3
+    checkpoint = directory / "checkpoints" / f"step-{step_to_resume:06d}.pt"
+    assert caught.value.checkpoint_path == checkpoint
+    assert stopped["checkpoint_path"] == str(checkpoint)
+    assert stopped["checkpoint_error"] == ("Cannot write checkpoint." if save_fails else None)
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    assert state["step"] == step_to_resume and "ema_model" in state
+    assert {entry["step"].item() for entry in state["optimizer"]["state"].values()} == {step_to_resume}
+
+    config = replace(config, schedule=replace(config.schedule, max_rounds=1))
+    db.batches.append([_record(1), _record(-1)])
+    resumed = controller.TrainingController(config, db).run(resume=checkpoint)
+    assert _events(resumed, "round_finished")[0]["step"] == step_to_resume + 2
+    assert _events(resumed, "checkpoint_saved")[0]["round"] == 1
+
+
+def test_sigint_during_checkpoint_reuses_the_completed_write(training, monkeypatch):
+    config, db = training
+    db.batches.append([_record(1), _record(-1)])
+    original_save = controller.Learner.save_checkpoint
+    writes = []
+
+    def save(learner, path):
+        writes.append(path)
+        original_save(learner, path)
+        signal.raise_signal(signal.SIGINT)
+
+    monkeypatch.setattr(controller.Learner, "save_checkpoint", save)
+    with pytest.raises(controller.TrainingInterrupted) as caught:
+        controller.TrainingController(config, db).run()
+
+    directory = next(config.runs_dir.iterdir())
+    checkpoint = directory / "checkpoints/step-000002.pt"
+    assert writes == [checkpoint]
+    assert caught.value.checkpoint_path == checkpoint
+    assert _events(directory, "run_interrupted")[0]["phase"] == "save_checkpoint"
