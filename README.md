@@ -95,16 +95,15 @@ XIAQI_TEST_DATABASE_URL="$XIAQI_DATABASE_URL" \
 
 ### 自对弈训练
 
-在 `dev` 容器内准备 PostgreSQL 表、Go 引擎和 Python 绑定，并设置 `XIAQI_DATABASE_URL`。MiniZero 现场采集需要 GPU，联调配置中的 Learner 使用 CPU。[数据库和引擎](#自对弈棋谱入库) · [Python 绑定](src/data/check_minizero/README.md#构建与运行)
+构建 Go 引擎和 Python 绑定后，在仓库根目录用 PowerShell 启动。脚本为默认连接创建缺失的 PostgreSQL 角色、`xiaqi` 库和训练表，并复用已有数据。若为容器指定了 `XIAQI_DATABASE_URL`，脚本直接使用该连接。MiniZero 现场采集需要 GPU，联调配置中的 Learner 使用 CPU。[引擎构建](third_party/README.md#构建) · [Python 绑定](src/data/check_minizero/README.md#构建与运行)
 
-```bash
-export PYTHONPATH=/workspace/build/minizero/go
-python -m scripts.train --config configs/training/go_9x9_smoke.toml
+```powershell
+docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_smoke.toml
 ```
 
 联调配置在 `smoke-go-9x9` 池采集两轮，每轮计划提交两盘并更新两步。命令会打印运行目录，目录内有 `config.toml`、`events.jsonl`、TensorBoard 数据、检查点和导出的采集模型。[训练控制器](src/control/training_controller/README.md) · [TensorBoard](#tensorboard)
 
-续训时把 `--config` 指向原运行的 `config.toml`，用 `--resume` 指定 `checkpoints/` 下的检查点。续训沿用配置指定的棋谱池，在新运行目录中从恢复的训练步继续。
+续训时传入原运行目录的 `config.toml`，并在配置路径后用 `--resume` 指定 `checkpoints/` 下的检查点。续训沿用配置指定的棋谱池，在新运行目录中从恢复的训练步继续。
 
 ## 检查环境
 

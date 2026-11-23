@@ -1,3 +1,3 @@
 configs/minizero/*.cfg text eol=lf
-scripts/build_minizero.sh text eol=lf
+scripts/*.sh text eol=lf
 third_party/minizero-sp-commands.patch text eol=lf
