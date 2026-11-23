@@ -14,7 +14,7 @@
 
 ## 调用
 
-从仓库根目录执行建表 SQL。数据库创建和 `XIAQI_DATABASE_URL` 的设置见项目根目录说明。 [数据库准备](../../../README.md#自对弈棋谱入库)
+从仓库根目录执行建表 SQL。 [数据库创建与连接串设置](../../../PostgreSQL.md#初始化数据库)
 
 ```bash
 psql "$XIAQI_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f src/data/postgresql_store/schema.sql

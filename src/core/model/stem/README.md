@@ -8,7 +8,7 @@
 - `forward(board)` 接收浮点张量 `[B, C, n, n]`，返回 `[B, d, n, n]`。`B` 为批大小，棋盘边长 `n` 由输入决定。同一个 Stem 可以处理 9×9、13×13 等尺寸的棋盘。
 - 输入先经过一层 `3×3 Conv2d(C, d)`，设置 `stride=1`、`padding=1` 和 `bias=False`。随后每层残差块执行 `x + SiLU(LayerNorm(Conv3×3(x)))`。将 `num_blocks` 设为 `0` 时，输入卷积的输出即为最终特征。 [残差卷积](residual_conv/README.md)
 
-Transformer 将 Stem 的输出按行展平为 `[B, n², d]`，在序列开头拼接 CLS 后送入 Encoder。 [首版实现规划](../../../../首版实现规划.md#transformer)
+Transformer 将 Stem 的输出按行展平为 `[B, n², d]`，在序列开头拼接 CLS 后送入 Encoder。 [Transformer 前向](../transformer/README.md#前向计算)
 
 下面用 9×9 的合成输入演示调用方式。通道数和模型宽度均为示例值。
 

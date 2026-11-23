@@ -1,6 +1,6 @@
 # 内存经验池
 
-`ReplayBuffer(board_size, min_train_samples, target_samples)` 在 CPU 内存中按盘保存复盘结果。`Learner` 调用它完成入池和采样，外层训练入口负责棋局的读取顺序、规则校验和去重。 [实现代码](replay_buffer.py) · [复盘样本](../../../data/minizero_replay/README.md#输出) · [棋谱读取规划](../../../../PostgreSQL.md#内存窗口与采样)
+`ReplayBuffer(board_size, min_train_samples, target_samples)` 在 CPU 内存中按盘保存复盘结果。`Learner` 调用它完成入池和采样，外层训练入口负责棋局的读取顺序、规则校验和去重。 [实现代码](replay_buffer.py) · [复盘样本](../../../data/minizero_replay/README.md#输出) · [回填和增量复盘](../../../../PostgreSQL.md#内存窗口与采样)
 
 ## 入池与淘汰
 

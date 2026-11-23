@@ -1,59 +1,68 @@
 # 自对弈棋谱存储与内存经验池
 
-## 首版需求
+PostgreSQL 保存 MiniZero 的原始棋谱和采集来源。训练控制器启动时按池回填近期棋谱，每轮采集后增量复盘，Learner 从 CPU 内存中的样本取训练批次。 [数据模块](src/data/README.md) · [训练指南](docs/training.md)
 
-MiniZero 用 `go_9x9_az_n200.pt` 生成完整棋谱，PostgreSQL 持久化原始文本和采集信息。训练程序启动时把最近的有效棋谱复盘成内存经验池，运行中增量处理新棋局。每个训练批次直接从内存池取样。 [现有自对弈入口](third_party/README.md#自对弈) · [现有复盘接口](src/data/minizero_replay/README.md)
+## 初始化数据库
 
-- 首版使用 9×9 围棋、7 目贴目和 `positional` 劫规则。同一经验池使用相同的规则和样本格式。 [9×9 配置](configs/minizero/go_9x9_az.cfg)
-- 每个独立经验池的保留目标暂定为 `500_000` 条通过复盘校验的训练位置。按盘加入和淘汰，按有效样本数计量。达到 `min_train_samples`（默认 `10_000`）即可抽取训练批次。 [模型更新接口](模型更新模块规划.md#对外接口)
-- `pool_id` 标识棋局所属的经验池，`source_run_id` 标识实际生成棋局的采集批次。两套模型可以读取同一官方数据池。各自开始自对弈时使用独立的池。同一模型迭代更新权重时沿用原池，登记新的采集批次。
+`dev` 容器启动时会启动 PostgreSQL，数据保存在 `xiaqi-postgresql-data` 卷中。同一时间由一个 `dev` 容器持有这个卷。切换容器前先退出原容器，也可以直接在已运行的容器里执行相关命令。换机器或升级 PostgreSQL 大版本时，可用 `pg_dump -Fc` 备份，再用 `pg_restore` 恢复。 [容器入口](docker/dev-entrypoint.py) · [Compose 配置](compose.yaml)
+
+用 `scripts/train.sh` 启动训练时，脚本会初始化默认库。单独使用采集或导入命令时，先按首页准备开发镜像和数据卷，再从宿主机进入容器。 [联调快跑](README.md#联调快跑) · [训练启动](docs/training.md#启动训练)
+
+```powershell
+docker compose run --rm dev
+```
+
+在容器终端中，分别在角色或数据库缺失时执行前两行。通过 Unix socket 连接时，默认使用容器当前用户名进行 peer 认证。已有默认库时，从设置连接串开始即可，建表 SQL 可重复运行。 [建表 SQL](src/data/postgresql_store/schema.sql)
+
+```bash
+runuser -u postgres -- createuser "$(id -un)"
+runuser -u postgres -- createdb --owner="$(id -un)" xiaqi
+export XIAQI_DATABASE_URL='dbname=xiaqi host=/var/run/postgresql'
+psql "$XIAQI_DATABASE_URL" -v ON_ERROR_STOP=1 -1 -f src/data/postgresql_store/schema.sql
+```
+
+管理员可用 `runuser -u postgres -- psql -d postgres` 连接，输入 `\q` 退出。容器内的 TCP 监听地址为 `localhost:5432`。
+
+## 采集与导入
+
+### 现场采集
+
+准备 MiniZero Go 引擎、配套的 `.commit` 文件和公开权重后，在已设置连接串的 GPU `dev` 容器中采集一盘。脚本会打印批次 UUID，以及每盘已提交的 `game_id` 和 `ingest_seq`。 [构建引擎](third_party/README.md#构建) · [公开权重](third_party/README.md#公开权重) · [采集入口](scripts/collect_selfplay.py)
+
+```bash
+python -m scripts.collect_selfplay --pool-id official-go-9x9 --games 1 \
+  --model models/minizero/go_9x9_az_n200.pt \
+  --conf-str 'program_quiet=true:zero_num_parallel_games=1:zero_num_threads=1:actor_num_simulation=2:zero_disable_resign_ratio=1'
+```
+
+### 导入输出文件
+
+`--record-file` 从已有日志筛选完整的 `SelfPlay true … #` 消息。执行前将三个变量分别设为这批棋谱的 UUID、权重 SHA-256 和 MiniZero 完整提交号。`effective.cfg` 使用这批采集的生效配置，运行引擎时可用相同参数加 `-gen effective.cfg` 导出。 [消息筛选与生效配置](src/data/minizero_selfplay/README.md)
+
+```bash
+python -m scripts.collect_selfplay --pool-id official-go-9x9 --record-file record.txt \
+  --source-run-id "$source_run_id" --model-sha256 "$model_sha256" \
+  --minizero-commit "$minizero_commit" --effective-config effective.cfg
+```
+
+首次导入尚无 UUID 的批次时，生成一个 UUID 并保存。导入中断后，用同一池、批次 UUID、来源元数据和原始棋谱顺序重跑，已经写入的棋局会返回原入库编号。 [事务与重试](src/data/postgresql_store/README.md#事务与重试)
+
+采集或导入后，可在容器内查询这个池最近入库的棋局。
+
+```bash
+psql "$XIAQI_DATABASE_URL" -c "SELECT ingest_seq, game_id, source_run_id FROM games WHERE pool_id = 'official-go-9x9' ORDER BY ingest_seq DESC LIMIT 5"
+```
 
 ## PostgreSQL 存储与接口
 
-每盘一条记录。`record_text` 保留完整的 `SelfPlay true … #` 文本。每个采集批次保存权重 SHA-256、MiniZero 提交号和生效配置，包括实际使用的规则和搜索参数。
+`pool_id` 区分经验池。同一池使用一致的棋盘尺寸、贴目和劫规则。`source_run_id` 标识一次采集批次，关联模型 SHA-256、MiniZero 提交号和生效配置。每轮采集会登记新的批次，同一次训练使用同一池。每盘棋保留原始 `record_text` 和唯一的 `game_id`，`ingest_seq` 是池内的入库顺序。
 
-| 字段 | 用途 |
-| --- | --- |
-| `game_id` | 采集端为同一盘生成的稳定 ID，写入重试时复用。 |
-| `pool_id` | 棋局所属经验池。 |
-| `ingest_seq` | 池内递增的入库顺序，用于增量读取和排序。 |
-| `source_run_id` | 关联采集批次，供读取方按对应配置复盘。 |
-| `record_text` | 供 `parse_record` 读取的原始棋谱。 |
-
-按 `game_id` 保证唯一，按 `(pool_id, ingest_seq)` 建唯一索引。分配编号和写入棋局在同一事务完成。并发写入同一池时锁住该池的计数行再分配编号，保证读取方看到某个编号后，后续提交的棋局编号都更大。普通自增序列在事务提交前就可能分配编号，用它做增量游标会遇到较小编号晚提交的问题。 [PostgreSQL 序列](https://www.postgresql.org/docs/current/functions-sequence.html) · [PostgreSQL 行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)
-
-以下是采集端和训练程序调用的 Python 接口草案。
-
-| 接口 | 行为 |
-| --- | --- |
-| `register_source(source_run)` | 登记采集批次及其权重、引擎版本和生效配置。 |
-| `append_game(pool_id, game_id, source_run_id, record_text) -> int` | 写入一盘完整棋谱，返回已提交的 `ingest_seq`。同一 ID 和相同内容重试时返回原编号。若同一 ID 的池、来源或内容不一致，报告冲突。 |
-| `fetch_games_before(pool_id, before_seq, limit) -> list[StoredGame]` | 按编号降序读取 `ingest_seq < before_seq` 的棋局。`before_seq=None` 时从最新一盘开始。 |
-| `fetch_games_after(pool_id, after_seq, limit) -> list[StoredGame]` | 按编号升序读取 `ingest_seq > after_seq` 的棋局，供运行中增量更新。 |
-
-读取返回棋谱文本、编号及复盘所需的来源信息。采集端负责识别完整输出和写入，训练程序串行调用 `parse_record`、`replay_record` 并校验池的规则。通过校验且样本数大于零的棋局才能入池，计数取自 `TrainingSamples.features.shape[0]`。 [棋谱解析](src/data/minizero_record/README.md) · [复盘校验](src/data/minizero_replay/README.md#校验)
+入库时锁住池计数行，在同一事务内分配编号并写入棋谱，使同池的提交顺序与编号一致。控制器用这个编号分页和更新增量游标。表结构、Python 接口和数据库测试见各模块说明。 [棋谱写入](src/data/postgresql_store/README.md) · [棋谱读取](src/data/postgresql_reader/README.md)
 
 ## 内存窗口与采样
 
-1. **启动建池。** 从库里按新到旧分页，每盘复盘通过后直接加到窗口最旧的一端，直到达到保留目标或读完该池。用第一页的最大编号作为后续增量游标，空池从 `0` 开始。建池期间新提交的棋局在下一次增量更新中读取。样本达到 `min_train_samples` 后，入口可在分页之间调用 `step()`。
-2. **增量更新。** 在训练批次之间按编号升序分批拉取游标之后的新棋局，通过校验就将整盘加到窗口最新的一端。遇到格式或棋局校验错误时记录棋局 ID 和原因，并推进游标。数据库连接或复盘环境故障时保留游标，重试尚未处理的记录。
-3. **整盘淘汰。** 棋局加入后，只要 `当前有效样本总数 - 最老一盘的样本数 >= 目标条数`，就释放最老一盘的数组，然后继续检查。达到保留目标后，窗口至少有目标条数，多出的样本少于当前最老一盘的样本数。历史棋谱继续保存在 PostgreSQL 中。
-4. **全池抽样。** 直接保留每盘现有的 `TrainingSamples` 数组。每次更新后，用各盘样本数建立累计索引。从整池均匀抽取批内互不重复的样本编号，再定位到所属棋局和盘内位置。将对应的状态、策略和价值组装为同一批传给训练循环。
+1. **回填。** 启动时按 `ingest_seq` 从新到旧读取与复盘，直到达到 `[learner].target_samples` 或读完池。第一页最大编号作为增量游标，空池从 `0` 开始。
+2. **增量复盘。** 每轮采集结束后，控制器按编号升序读取至本轮最后提交的编号。通过规则与复盘校验且产出样本的棋局按整盘入池。无效棋谱记录 `game_skipped` 并推进游标，数据库或复盘环境故障结束本次运行。
+3. **整盘淘汰和采样。** 剩余样本够保留目标时淘汰最旧一盘，历史棋谱仍保存在数据库。经验池达到 `min_train_samples` 后，Learner 从全池均匀、无放回地抽取训练批次。
 
-首版由训练进程持有和更新内存池，在同一进程调用采样接口。若通过 PyTorch `DataLoader` 取样，使用 `num_workers=0`。每次训练只将当前批次传到 GPU。 [PyTorch 单进程数据加载](https://docs.pytorch.org/docs/stable/data.html#single-process-data-loading-default)
-
-| 接口 | 行为 |
-| --- | --- |
-| `restore(pool_id, target_samples=500_000) -> PoolStatus` | 由训练入口分批回填历史棋局并初始化增量游标，返回经验池状态。 |
-| `refresh(max_games) -> PoolStatus` | 本轮最多处理 `max_games` 盘新棋局，返回更新后的窗口状态。 |
-| `sample_batch(batch_size, rng) -> TrainingSamples` | 从已就绪窗口中全池抽样，返回与现有训练接口兼容的数组。池未就绪时报告当前样本数。 |
-
-`PoolStatus` 包含有效样本数、活跃棋局数和是否就绪。训练入口维护回填和增量读取的游标。
-
-## 容量与验收
-
-9×9 的三个 `float32` 数组每条共 `(18 × 9 × 9 + 82 + 1) × 4 = 6,164` 字节。50 万条约 **2.87 GiB**，同时持有两个满池约 **5.74 GiB**。这是样本数组本身的预算，进程运行、整盘超额和组装训练批次还需留余量。按盘持有数组可以直接释放淘汰的棋局，更新采样索引时仅需重算每盘累计样本数。 [现有样本形状](src/data/minizero_replay/README.md#输出)
-
-- 用较小阈值验证启动建池、增量读入、整盘淘汰、两池隔离和同一棋局重试。覆盖启动期间有新局提交、并发写入和校验失败的情况。
-- 验证长局和短局里的各个训练位置拥有相同的入选概率，抽出的三个数组行数一致。
-- 用官方权重的实际棋谱测量启动复盘耗时、新局的复盘吞吐、采样组批时延和容器内存峰值，再确认 50 万条的运行预算。
+[棋谱解析](src/data/minizero_record/README.md) · [复盘校验](src/data/minizero_replay/README.md#校验) · [控制器流程](src/control/training_controller/README.md) · [内存经验池](src/core/learner/replay_buffer/README.md)

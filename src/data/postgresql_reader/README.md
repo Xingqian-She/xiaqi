@@ -11,7 +11,7 @@
 
 ## 调用
 
-在已建表的开发环境中，用装有 Psycopg 3 的 Python 运行示例。由调用方管理 `autocommit=True` 的连接，保留默认的元组行格式，在事务外读取每一页。 [数据库准备](../../../README.md#自对弈棋谱入库) · [Psycopg 事务说明](https://www.psycopg.org/psycopg3/docs/basic/transactions.html)
+在已建表的开发环境中，用装有 Psycopg 3 的 Python 运行示例。由调用方管理 `autocommit=True` 的连接，保留默认的元组行格式，在事务外读取每一页。 [数据库准备](../../../PostgreSQL.md#初始化数据库) · [Psycopg 事务说明](https://www.psycopg.org/psycopg3/docs/basic/transactions.html)
 
 ```python
 import os

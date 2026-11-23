@@ -1,6 +1,6 @@
 # 数据类
 
-每个数据类有自己的目录，包含定义和字段说明。项目代码从对应的类型模块导入，已有调用方也可以通过旧路径导入同一个类。
+每个数据类有自己的目录，包含字段说明和类型定义。项目代码从对应的类型模块导入。
 
 ```python
 from src.data_types.source_run.source_run import SourceRun

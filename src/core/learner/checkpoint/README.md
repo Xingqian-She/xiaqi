@@ -57,6 +57,8 @@ print(resumed.step().step)  # 2
 
 ## 测试
 
+测试覆盖训练状态恢复、旧检查点兼容和加载失败时的回滚。 [测试代码](checkpoint_test.py)
+
 ```sh
 python -m unittest -v src.core.learner.checkpoint.checkpoint_test
 ```

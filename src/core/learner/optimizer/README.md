@@ -27,6 +27,8 @@ for group in optimizer.param_groups:
 
 ## 测试
 
+测试覆盖衰减分组、参数顺序和旧优化器状态转换。 [测试代码](optimizer_test.py)
+
 ```sh
 python -m unittest -v src.core.learner.optimizer.optimizer_test
 ```

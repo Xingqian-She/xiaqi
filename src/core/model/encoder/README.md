@@ -37,7 +37,7 @@ output = x + ffn(ffn_norm(x))
 
 `Encoder(model_dim, num_heads, ffn_hidden_dim, num_layers, rope)` 按顺序执行 `num_layers` 层 `EncoderBlock`。层数取正整数，各层有独立的可训练参数，共用同一份固定棋盘尺寸的 `AxialRoPE2D`。输入形状为 `[B, 1 + n², model_dim]`，输出是最后一层的 token 序列，形状与输入一致。 [实现代码](encoder.py)
 
-构造时，将每层 `attention.out_proj.weight` 和 `ffn.out_proj.weight` 的初始值乘以 `1/sqrt(2L)`，其中 `L` 是 Encoder 的总层数。更换棋盘尺寸时，按新尺寸和原有频率基数 `theta` 重建 RoPE。保持模型宽度、头数、FFN 中间宽度及层数一致，即可加载原来的 `state_dict`。 [首版实现规划](../../../../首版实现规划.md#transformer)
+构造时，将每层 `attention.out_proj.weight` 和 `ffn.out_proj.weight` 的初始值乘以 `1/sqrt(2L)`，其中 `L` 是 Encoder 的总层数。更换棋盘尺寸时，按新尺寸和原有频率基数 `theta` 重建 RoPE。保持模型宽度、头数、FFN 中间宽度及层数一致，即可加载原来的 `state_dict`。 [Transformer 前向](../transformer/README.md#前向计算)
 
 下面演示 `src/core/model/encoder/` 下按包加载的模块如何调用三层 Encoder。配置参数为示例值。
 

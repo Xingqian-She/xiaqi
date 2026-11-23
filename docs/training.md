@@ -1,0 +1,97 @@
+# 自对弈训练指南
+
+## 检查开发环境
+
+`dev` 镜像提供 PyTorch、CUDA、MiniZero 构建依赖、PostgreSQL 和 TensorBoard。仓库挂载到容器的 `/workspace`，源码改动可直接在容器内使用。首次运行按首页步骤创建数据卷并构建镜像、引擎和 Python 绑定。 [联调快跑](../README.md#联调快跑) · [Dockerfile](../docker/Dockerfile)
+
+在宿主机的仓库根目录运行下面的命令。环境脚本检查 GPU、cuDNN 和编译工具，实际执行 CUDA 张量运算，并比较 Inductor 与 eager 的前向结果和梯度。首次编译需要等待，检查失败会返回非零退出码。Inductor、Triton 和 CUDA 的缓存写在容器的 `/tmp`，临时容器退出后清理。 [检查脚本](../scripts/check_env.py)
+
+```powershell
+docker compose config --quiet
+docker compose run --rm -T dev python scripts/check_env.py
+```
+
+构建步骤访问软件源需要代理时，将以下命令中的 `7897` 改为本机代理端口。
+
+```powershell
+docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --build-arg https_proxy=http://host.docker.internal:7897 dev
+```
+
+## 选择训练配置
+
+两套配置均使用 9×9 棋盘、7 目贴目和 `positional` 劫规则。联调用于检验采集、复盘、更新和导出的完整流程。两套配置的自对弈均使用 GPU。
+
+| 设置 | [联调配置](../configs/training/go_9x9_smoke.toml) | [首版训练配置](../configs/training/go_9x9_az.toml) |
+| --- | --- | --- |
+| 棋谱池 `[run].pool_id` | `smoke-go-9x9` | `train-go-9x9-az` |
+| Learner 设备 `[learner].device` | `cpu` | `cuda` |
+| 编译训练前向 `[learner].compile_model` | `false` | `true` |
+| Transformer 宽度 / Encoder 层数 | 8 / 1 | 384 / 2 |
+| 每手 MCTS 搜索预算 `[alphazero].num_simulations` | 2 | 200 |
+| 自对弈并行盘数 `[selfplay].num_parallel_games` | 1 | 32 |
+| 每轮采集盘数 `[schedule].games_per_round` | 2 | 2,000 |
+| 开训新增棋局门槛 `[schedule].min_new_games_before_train` | 2 | 0 |
+| 每次更新样本数 `[learner].batch_size` | 2 | 1,024 |
+| 开训样本门槛 `[learner].min_train_samples` | 4 | 100,000 |
+| 经验池保留目标 `[learner].target_samples` | 64 | 4,000,000 |
+| 每轮更新步数 `[schedule].train_steps_per_round` | 2 | 200 |
+| 每次启动的轮数 `[schedule].max_rounds` | 2 | 300 |
+
+经验池保存在 CPU 内存中。9×9 的每个样本包含 `18 × 9 × 9` 个特征值、82 个策略值和 1 个价值，三个 `float32` 数组共占 6,164 字节。达到 400 万样本时，数组约占 **23 GiB 主机内存**，进程、整盘保留和组批还需内存。`target_samples` 是按整盘淘汰的保留目标。 [样本形状](../src/data_types/training_samples/README.md) · [经验池实现](../src/core/learner/replay_buffer/README.md)
+
+修改配置时，搜索预算和并行盘数影响采集开销，批大小控制单次更新规模。批大小、开训样本门槛和经验池保留目标须满足 `batch_size <= min_train_samples <= target_samples`。修改棋盘、贴目或劫规则时使用对应的 `pool_id`。 [配置字段](../src/control/config_io/README.md) · [池与采集批次](../PostgreSQL.md#postgresql-存储与接口)
+
+## 启动训练
+
+构建引擎和 Go 版 Python 绑定后，在宿主机的仓库根目录启动联调。
+
+```powershell
+docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_smoke.toml
+```
+
+运行首版训练配置时，改用下面的命令。
+
+```powershell
+docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_az.toml
+```
+
+`train.sh` 在默认连接上创建缺失的 PostgreSQL 角色、`xiaqi` 库和表，设置 `minizero_py` 的搜索路径，再调用 Python 入口。向容器传入 `XIAQI_DATABASE_URL` 时，脚本直接使用该连接，表由调用方准备。两套随仓配置都从新初始化的模型导出首轮采集权重。 [启动脚本](../scripts/train.sh) · [Python 入口](../scripts/train.py) · [初始化数据库](../PostgreSQL.md#初始化数据库)
+
+## 运行产物与进度
+
+终端打印 `run_id` 和容器内的 `run_dir`。随仓配置对应宿主机的 `runs/<run_id>/`。
+
+| 产物 | 用途 |
+| --- | --- |
+| `config.toml`、`minizero_base.cfg` | 本次使用的训练配置快照和 MiniZero 基础配置副本。 |
+| `run.json` | 运行 ID、启动时间、配置来源、初始权重来源和续训路径。 |
+| `events.jsonl` | 逐条记录采集、训练、跳过、中断、导出和结束事件。 |
+| `tensorboard/` | 按训练步记录损失，按采集轮记录棋局统计、池规模和耗时。 |
+| `checkpoints/step-*.pt` | 模型状态、优化器状态和已完成步数，供 `--resume` 使用。 |
+| `selfplay_models/*.pt` | 供 MiniZero 加载的 TorchScript 模型，包含首轮准备好的模型以及各训练阶段后导出的模型。 |
+
+联调在两轮中各采集两盘。通过复盘且达到两项开训门槛时，每轮更新两步，总计入库四盘、更新四步。此时 `run_finished` 的 `rounds`、`games_committed` 和 `train_steps` 分别为 `2`、`4` 和 `4`。若出现 `training_skipped`，查看事件中的样本数、新增有效棋局数与对应门槛。运行失败时看 `run_failed` 的 `phase` 和 `error`。 [训练控制器](../src/control/training_controller/README.md) · [日志指标口径](../src/control/run_log/README.md#tensorboard-指标)
+
+## TensorBoard
+
+构建 `dev` 镜像后，在宿主机的仓库根目录启动查看器。它只读挂载默认的 `runs/` 目录。 [打开 TensorBoard](http://127.0.0.1:6006)
+
+```powershell
+docker compose up -d tensorboard
+```
+
+用 `docker compose stop tensorboard` 停止查看器。
+
+## 续训
+
+续训使用原运行目录的 `config.toml` 和一个已保存的训练检查点。保留快照引用的 `minizero_base.cfg`，使用存有原棋谱池的数据库。以下以联调第 4 步的检查点为例，将变量替换为终端打印的 `run_id`。
+
+```powershell
+$xiaqiRunId = '替换为原运行的 run_id'
+docker compose run --rm -T dev bash scripts/train.sh "runs/$xiaqiRunId/config.toml" `
+  --resume "runs/$xiaqiRunId/checkpoints/step-000004.pt"
+```
+
+控制器恢复模型、优化器和训练步数，再从同一个 `pool_id` 回填经验池。它创建新的运行目录，采集轮号从 1 开始，`max_rounds` 设定本次启动的轮数。联调续训若再完成四次更新，末尾累计步数为 8。
+
+用 `Ctrl+C` 可以中断运行。已提交的棋谱仍可供下次回填，续训从最后一个已写入的训练检查点开始。 [训练检查点](../src/core/learner/checkpoint/README.md)

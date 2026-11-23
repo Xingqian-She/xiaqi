@@ -27,7 +27,7 @@ output = ffn(tokens)
 
 ## 与 Encoder 的分工
 
-外层 Encoder block 负责 RMSNorm 和残差相加，FFN 子层按 `tokens + ffn(norm(tokens))` 更新。组装 Encoder 时，将 `ffn.out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。 [首版实现规划](../../../../首版实现规划.md#transformer)
+外层 Encoder block 负责 RMSNorm 和残差相加，FFN 子层按 `tokens + ffn(norm(tokens))` 更新。组装 Encoder 时，将 `ffn.out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。 [Encoder 与初始化](../encoder/README.md#多层-encoder)
 
 ## 测试
 

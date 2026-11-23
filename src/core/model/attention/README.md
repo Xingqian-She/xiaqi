@@ -31,7 +31,7 @@ output = attention(tokens)
 
 ## 与 Encoder 的分工
 
-本模块不执行 RMSNorm、不添加残差连接，也不负责输出投影初始化缩放。外层 Pre-RMSNorm block 负责组织 `tokens + attention(norm(tokens))`；按[首版实现规划](../../../../首版实现规划.md#transformer)，组装 Encoder 时再将 `out_proj.weight` 在初始化阶段乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。这与 SDPA 在前向中使用的点积缩放是两回事。
+外层 `EncoderBlock` 执行 `tokens + attention(norm(tokens))`。组装 Encoder 时，将 `out_proj.weight` 的初值乘以 `1/sqrt(2L)`，其中 `L` 为 Encoder 总层数。前向计算中的点积缩放由 SDPA 处理。 [Encoder 与初始化](../encoder/README.md#多层-encoder)
 
 ## 测试
 

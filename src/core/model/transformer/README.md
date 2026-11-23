@@ -1,12 +1,13 @@
 # 围棋 Transformer
 
-`Transformer` 由卷积 Stem、多层 Encoder 和策略与价值输出头组成。 [实现代码](transformer.py) · [首版实现规划](../../../../首版实现规划.md#transformer)
+`Transformer` 由卷积 Stem、多层 Encoder 和策略与价值输出头组成。 [实现代码](transformer.py) · [模型索引](../README.md)
 
 ## 接口与形状
 
 - `Transformer.from_config(config)` 用 `TransformerConfig` 构建模型。也可以直接向 `Transformer(...)` 传入同名参数。`num_stem_blocks` 控制 Stem 的残差卷积块数，默认 `1`，设为 `0` 时使用单卷积 Stem。 [模型配置字段](../../../data_types/transformer_config/README.md)
 - `forward(board)` 接收形状为 `[B, C, n, n]` 的浮点张量，其中 `C = in_channels`，`n = board_size`。返回 `(policy_logits, value)`，形状分别为 `[B, n² + 1]` 和 `[B, 1]`。
 - 策略输出是原始 logit。棋盘点 `(r, c)` 对应下标 `r * n + c`，`pass` 对应下标 `n²`。价值取值为 `[-1, 1]`，估计当前执子方的终局结果。
+- 接入 MiniZero Go 时，使用 18 通道的棋盘特征。9×9 对应 81 个落点和 1 个 `pass`。 [复盘样本](../../../data/minizero_replay/README.md#输出) · [MiniZero 推理接口](../../../integrations/minizero/README.md)
 
 下面用 9×9 的合成输入演示接口。构造参数均为示例值。
 
