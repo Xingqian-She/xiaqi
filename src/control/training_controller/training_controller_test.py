@@ -184,6 +184,31 @@ def test_cumulative_gate_and_win_rates_use_only_this_runs_games(training):
         assert summary[tag] == pytest.approx(1 / 3)
 
 
+def test_exports_ema_parameters_for_the_next_round(training):
+    config, db = training
+    config = replace(
+        config,
+        learner=replace(config.learner, mini_batch_size=1, ema_enabled=True),
+    )
+    db.batches.extend([[_record(1), _record(-1)], [_record(0), _record(1)]])
+    directory = controller.TrainingController(config, db).run()
+    checkpoint = directory / "checkpoints/step-000002.pt"
+    state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    model_path = directory / "selfplay_models/step-000002.pt"
+    exported = torch.jit.load(str(model_path), map_location="cpu").model
+
+    parameters = dict(exported.named_parameters())
+    torch.testing.assert_close(parameters, state["ema_model"], rtol=0, atol=0)
+    assert any(
+        not torch.equal(weight, state["model"][name])
+        for name, weight in parameters.items()
+    )
+    assert (
+        _events(directory, "selfplay_started")[1]["model_sha256"]
+        == hashlib.sha256(model_path.read_bytes()).hexdigest()
+    )
+
+
 def test_external_initial_model_is_pinned_in_snapshot(training, tmp_path):
     config, db = training
     external_model = tmp_path / "external.pt"

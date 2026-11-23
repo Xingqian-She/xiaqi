@@ -1,8 +1,8 @@
 # 训练检查点
 
-`Learner.save_checkpoint(path)` 保存原始模型状态、优化器状态和已完成步数，对应 `model`、`optimizer` 和 `step` 三个字段。调用方准备目标目录并在训练步之间调用。模块将状态写到同目录的临时文件，写入成功后替换目标，失败时清理临时文件。 [实现代码](checkpoint.py)
+`Learner.save_checkpoint(path)` 保存训练模型状态、优化器状态和已完成步数，对应 `model`、`optimizer` 和 `step` 三个字段。启用 EMA 时用 `ema_model` 字段保存推理权重。调用方准备目标目录并在训练步之间调用。模块将状态写到同目录的临时文件，写入成功后替换目标，失败时清理临时文件。 [实现代码](checkpoint.py)
 
-`Learner.load_checkpoint(path)` 在 CPU 上读取检查点，再就地恢复模型和优化器。优化器状态转换由初始化时的参数分组提供，恢复失败时回滚模型和优化器。成功后，`Learner` 更新步数。编译训练和普通训练共用同一格式。续训时用匹配的模型与优化器工厂创建 `Learner`，加载检查点后回填经验池。 [优化器分组](../optimizer/README.md) · [Learner 调用](../README.md)
+`Learner.load_checkpoint(path)` 在 CPU 上读取检查点，再就地恢复模型、优化器和启用的 EMA。开启 EMA 时，缺少 `ema_model` 的旧文件用恢复后的训练权重初始化 EMA。优化器状态转换由初始化时的参数分组提供。恢复失败时回滚已尝试恢复的状态，全部成功才更新步数。编译训练和普通训练共用同一格式。续训时用匹配的模型与优化器工厂创建 `Learner`，加载检查点后回填经验池。 [优化器分组](../optimizer/README.md) · [EMA 权重](../ema/README.md) · [Learner 调用](../README.md)
 
 ## CPU 示例
 

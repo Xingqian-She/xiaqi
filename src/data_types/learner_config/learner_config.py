@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from numbers import Integral
+from numbers import Integral, Real
 
 import torch
 
@@ -15,6 +15,9 @@ class LearnerConfig:
     seed: int | None = None
     value_loss_weight: float = 1.0
     compile_model: bool = False
+    mini_batch_size: int | None = None
+    ema_enabled: bool = False
+    ema_tau: float = 0.05
 
     def __post_init__(self) -> None:
         for name, size in (
@@ -31,3 +34,25 @@ class LearnerConfig:
             )
         if not math.isfinite(self.value_loss_weight) or self.value_loss_weight < 0:
             raise ValueError("value_loss_weight must be finite and nonnegative.")
+        mini_batch_size = self.mini_batch_size
+        if mini_batch_size is not None:
+            if (
+                not isinstance(mini_batch_size, Integral)
+                or isinstance(mini_batch_size, bool)
+                or mini_batch_size < 1
+            ):
+                raise ValueError("mini_batch_size must be a positive integer.")
+            if mini_batch_size > self.batch_size or int(self.batch_size) % int(
+                mini_batch_size
+            ):
+                raise ValueError(
+                    "mini_batch_size must divide batch_size and not exceed it."
+                )
+        if type(self.ema_enabled) is not bool:
+            raise ValueError("ema_enabled must be a boolean.")
+        if (
+            not isinstance(self.ema_tau, Real)
+            or isinstance(self.ema_tau, bool)
+            or not 0 < self.ema_tau <= 1
+        ):
+            raise ValueError("ema_tau must be in (0, 1].")

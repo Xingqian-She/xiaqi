@@ -84,6 +84,67 @@ class CheckpointTest(unittest.TestCase):
                 self.optimizer.state[new_param], legacy_optimizer.state[old_param]
             )
 
+    def test_legacy_checkpoint_initializes_ema_from_restored_model(self) -> None:
+        ema_model = deepcopy(self.model).eval().requires_grad_(False)
+        self.model(torch.ones(1, 2)).sum().backward()
+        self.optimizer.step()
+        save_checkpoint(self.path, model=self.model, optimizer=self.optimizer, step=1)
+        saved_model = deepcopy(self.model.state_dict())
+        self.assertFalse(torch.equal(ema_model[1].bias, saved_model["1.bias"]))
+
+        step = load_checkpoint(
+            self.path,
+            model=self.model,
+            optimizer=self.optimizer,
+            normalize_optimizer_state=self.normalize_optimizer_state,
+            ema_model=ema_model,
+        )
+
+        self.assertEqual(step, 1)
+        torch.testing.assert_close(ema_model.state_dict(), saved_model, rtol=0, atol=0)
+
+    def test_invalid_ema_state_rolls_back_model_optimizer_and_ema(self) -> None:
+        self.model(torch.ones(1, 2)).sum().backward()
+        self.optimizer.step()
+        ema_model = deepcopy(self.model).eval().requires_grad_(False)
+        before_model = deepcopy(self.model.state_dict())
+        before_optimizer = deepcopy(self.optimizer.state_dict())
+        before_ema = deepcopy(ema_model.state_dict())
+        invalid_ema = {name: value + 2 for name, value in before_ema.items()}
+        invalid_ema["1.bias"] = torch.zeros(3)
+        torch.save(
+            {
+                "model": {name: value + 1 for name, value in before_model.items()},
+                "optimizer": {
+                    "param_groups": [
+                        {**group, "lr": 0.5}
+                        for group in before_optimizer["param_groups"]
+                    ],
+                    "state": {},
+                },
+                "ema_model": invalid_ema,
+                "step": 10,
+            },
+            self.path,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "size mismatch for 1.bias"):
+            load_checkpoint(
+                self.path,
+                model=self.model,
+                optimizer=self.optimizer,
+                normalize_optimizer_state=self.normalize_optimizer_state,
+                ema_model=ema_model,
+            )
+
+        torch.testing.assert_close(
+            self.model.state_dict(), before_model, rtol=0, atol=0
+        )
+        torch.testing.assert_close(
+            self.optimizer.state_dict(), before_optimizer, rtol=0, atol=0
+        )
+        torch.testing.assert_close(ema_model.state_dict(), before_ema, rtol=0, atol=0)
+
     def test_failed_checkpoint_write_preserves_previous_file(self) -> None:
         def fail_after_write(state, file) -> None:
             file.write(b"incomplete checkpoint")

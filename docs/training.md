@@ -19,27 +19,29 @@ docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --b
 
 ## 选择训练配置
 
-两套配置均使用 9×9 棋盘、7 目贴目和 `positional` 劫规则。联调用于检验采集、复盘、更新和导出的完整流程。两套配置的自对弈均使用 GPU。
+随仓配置均使用 9×9 棋盘、7 目贴目、`positional` 劫规则和 GPU 自对弈。联调用于检验采集、复盘、更新和导出的完整流程。本机实验缩短采集轮次，并使用 EMA 权重自对弈。
 
-| 设置 | [联调配置](../configs/training/go_9x9_smoke.toml) | [首版训练配置](../configs/training/go_9x9_az.toml) |
-| --- | --- | --- |
-| 棋谱池 `[run].pool_id` | `smoke-go-9x9` | `train-go-9x9-az` |
-| Learner 设备 `[learner].device` | `cpu` | `cuda` |
-| 编译训练前向 `[learner].compile_model` | `false` | `true` |
-| Transformer 宽度 / Encoder 层数 | 8 / 1 | 384 / 2 |
-| 每手 MCTS 搜索预算 `[alphazero].num_simulations` | 2 | 200 |
-| 自对弈并行盘数 `[selfplay].num_parallel_games` | 1 | 32 |
-| 每轮采集盘数 `[schedule].games_per_round` | 2 | 2,000 |
-| 开训新增棋局门槛 `[schedule].min_new_games_before_train` | 2 | 0 |
-| 每次更新样本数 `[learner].batch_size` | 2 | 1,024 |
-| 开训样本门槛 `[learner].min_train_samples` | 4 | 100,000 |
-| 经验池保留目标 `[learner].target_samples` | 64 | 4,000,000 |
-| 每轮更新步数 `[schedule].train_steps_per_round` | 2 | 200 |
-| 每次启动的轮数 `[schedule].max_rounds` | 2 | 300 |
+| 设置 | [联调配置](../configs/training/go_9x9_smoke.toml) | [首版训练配置](../configs/training/go_9x9_az.toml) | [本机 EMA 实验](../configs/training/go_9x9_local_ema.toml) |
+| --- | --- | --- | --- |
+| 棋谱池 `[run].pool_id` | `smoke-go-9x9` | `train-go-9x9-az` | `train-go-9x9-local-ema` |
+| Learner 设备 `[learner].device` | `cpu` | `cuda` | `cuda` |
+| 编译训练前向 `[learner].compile_model` | `false` | `true` | `false` |
+| EMA `[learner].ema_enabled` | `false` | `false` | `true`，`tau = 0.05` |
+| Transformer 宽度 / Encoder 层数 | 8 / 1 | 384 / 2 | 512 / 4 |
+| 每手 MCTS 搜索预算 `[alphazero].num_simulations` | 2 | 200 | 256 |
+| 自对弈并行盘数 `[selfplay].num_parallel_games` | 1 | 32 | 32 |
+| 每轮采集盘数 `[schedule].games_per_round` | 2 | 2,000 | 40 |
+| 开训新增棋局门槛 `[schedule].min_new_games_before_train` | 2 | 0 | 40 |
+| 每次更新样本数 `[learner].batch_size` | 2 | 1,024 | 1,024 |
+| Mini batch 样本数 `[learner].mini_batch_size` | 2 | 1,024 | 512 |
+| 开训样本门槛 `[learner].min_train_samples` | 4 | 100,000 | 2,000 |
+| 经验池保留目标 `[learner].target_samples` | 64 | 4,000,000 | 500,000 |
+| 每轮更新步数 `[schedule].train_steps_per_round` | 2 | 200 | 4 |
+| 每次启动的最大轮数 `[schedule].max_rounds` | 2 | 300 | 100,000 |
 
-经验池保存在 CPU 内存中。9×9 的每个样本包含 `18 × 9 × 9` 个特征值、82 个策略值和 1 个价值，三个 `float32` 数组共占 6,164 字节。达到 400 万样本时，数组约占 **23 GiB 主机内存**，进程、整盘保留和组批还需内存。`target_samples` 是按整盘淘汰的保留目标。 [样本形状](../src/data_types/training_samples/README.md) · [经验池实现](../src/core/learner/replay_buffer/README.md)
+经验池保存在 CPU 内存中。9×9 的每个样本包含 `18 × 9 × 9` 个特征值、82 个策略值和 1 个价值，三个 `float32` 数组共占 6,164 字节。50 万和 400 万样本的数组分别约占 **2.9 GiB** 和 **23 GiB** 主机内存，进程、整盘保留和组批还需内存。`target_samples` 是按整盘淘汰的保留目标。 [样本形状](../src/data_types/training_samples/README.md) · [经验池实现](../src/core/learner/replay_buffer/README.md)
 
-修改配置时，搜索预算和并行盘数影响采集开销，批大小控制单次更新规模。批大小、开训样本门槛和经验池保留目标须满足 `batch_size <= min_train_samples <= target_samples`。修改棋盘、贴目或劫规则时使用对应的 `pool_id`。 [配置字段](../src/control/config_io/README.md) · [池与采集批次](../PostgreSQL.md#postgresql-存储与接口)
+修改配置时，搜索预算和并行盘数影响采集开销，`batch_size` 控制每次更新样本数，`mini_batch_size` 控制每次前向和反向的样本数。须满足 `batch_size <= min_train_samples <= target_samples`，并且 mini batch 能整除批大小。修改棋盘、贴目或劫规则时使用对应的 `pool_id`。 [Learner 配置](../src/data_types/learner_config/README.md) · [池与采集批次](../PostgreSQL.md#postgresql-存储与接口)
 
 ## 启动训练
 
@@ -55,7 +57,13 @@ docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_smo
 docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_az.toml
 ```
 
-`train.sh` 在默认连接上创建缺失的 PostgreSQL 角色、`xiaqi` 库和表，设置 `minizero_py` 的搜索路径，再调用 Python 入口。向容器传入 `XIAQI_DATABASE_URL` 时，脚本直接使用该连接，表由调用方准备。两套随仓配置都从新初始化的模型导出首轮采集权重。 [启动脚本](../scripts/train.sh) · [Python 入口](../scripts/train.py) · [初始化数据库](../PostgreSQL.md#初始化数据库)
+本机 EMA 实验使用独立棋谱池。累计至少 40 盘新棋局成功复盘并产出样本、池内至少有 2,000 个有效位置时执行训练。
+
+```powershell
+docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_local_ema.toml
+```
+
+`train.sh` 在默认连接上创建缺失的 PostgreSQL 角色、`xiaqi` 库和表，设置 `minizero_py` 的搜索路径，再调用 Python 入口。向容器传入 `XIAQI_DATABASE_URL` 时，脚本直接使用该连接，表由调用方准备。全新运行从初始模型导出首轮采集权重。 [启动脚本](../scripts/train.sh) · [Python 入口](../scripts/train.py) · [初始化数据库](../PostgreSQL.md#初始化数据库)
 
 ## 运行产物与进度
 
@@ -67,8 +75,10 @@ docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_az.
 | `run.json` | 运行 ID、启动时间、配置来源、初始权重来源和续训路径。 |
 | `events.jsonl` | 逐条记录采集、训练、跳过、中断、导出和结束事件。 |
 | `tensorboard/` | 按训练步记录损失，按采集轮记录棋局统计、池规模和耗时。 |
-| `checkpoints/step-*.pt` | 模型状态、优化器状态和已完成步数，供 `--resume` 使用。 |
+| `checkpoints/step-*.pt` | 供 `--resume` 使用的训练模型、优化器、已完成步数和开启时的 EMA 权重。 |
 | `selfplay_models/*.pt` | 供 MiniZero 加载的 TorchScript 模型，包含首轮准备好的模型以及各训练阶段后导出的模型。 |
+
+本机实验保留每轮生成的检查点和 EMA 推理权重。每 100 个训练轮的这两类文件合计约 33 GiB。 [检查点格式](../src/core/learner/checkpoint/README.md)
 
 联调在两轮中各采集两盘。通过复盘且达到两项开训门槛时，每轮更新两步，总计入库四盘、更新四步。此时 `run_finished` 的 `rounds`、`games_committed` 和 `train_steps` 分别为 `2`、`4` 和 `4`。若出现 `training_skipped`，查看事件中的样本数、新增有效棋局数与对应门槛。运行失败时看 `run_failed` 的 `phase` 和 `error`。 [训练控制器](../src/control/training_controller/README.md) · [日志指标口径](../src/control/run_log/README.md#tensorboard-指标)
 

@@ -43,9 +43,9 @@ print(learner.step())
 ## 训练步与检查点
 
 - `add_samples(samples, position="newest")` 按盘加入已有 `TrainingSamples`，返回 `PoolStatus`。历史棋局按从新到旧的顺序回填时使用 `position="oldest"`。
-- `pool_status()` 返回有效位置数、活跃棋局数和就绪状态。`step()` 在池未就绪时返回 `None`。就绪后对抽到的每条样本随机旋转棋盘特征和策略落点，再完成一次参数更新并返回 `StepMetrics`。 [棋盘旋转](rotation/README.md) · [指标字段](../../data_types/step_metrics/README.md)
-- `save_checkpoint(path)` 将原始模型状态、优化器状态和步数写到指定路径，目标目录由入口准备。续训时用匹配的模型和优化器工厂创建 `Learner`，调用 `load_checkpoint(path)` 后从棋谱重建经验池。`step_count` 返回当前模型已完成的更新步数，包含检查点恢复的步数。编译与普通训练共用检查点格式。[检查点与续训示例](checkpoint/README.md)
-- `get_inference_model()` 返回持有当前权重的原始模型引用。入口在训练步之间将它传给导出函数，由导出函数准备推理副本。 [MiniZero 推理导出](../../integrations/minizero/README.md)
+- `pool_status()` 返回有效位置数、活跃棋局数和就绪状态。`step()` 在池未就绪时返回 `None`。就绪后随机旋转批次中的棋盘特征和策略落点，再以 mini batch 累积梯度，完成一次优化器更新并返回完整批次的 `StepMetrics`。 [棋盘旋转](rotation/README.md) · [梯度累积](gradient_accumulation/README.md) · [指标字段](../../data_types/step_metrics/README.md)
+- `save_checkpoint(path)` 保存训练模型、优化器和步数，启用 EMA 时也保存推理权重。续训时用匹配的模型和优化器工厂创建 `Learner`，调用 `load_checkpoint(path)` 后从棋谱重建经验池。`step_count` 包含检查点恢复的步数。编译与普通训练共用检查点格式。 [检查点与续训示例](checkpoint/README.md)
+- `get_inference_model()` 返回供只读访问的模型引用。启用 EMA 时返回评估模式的 EMA 副本，关闭时返回原始模型。入口在训练步之间将它传给导出函数。 [EMA 权重](ema/README.md) · [MiniZero 推理导出](../../integrations/minizero/README.md)
 
 ## 测试
 
@@ -53,6 +53,8 @@ print(learner.step())
 
 ```sh
 python -m unittest -v src.core.learner.learner_test \
+  src.core.learner.gradient_accumulation.gradient_accumulation_test \
+  src.core.learner.ema.ema_test \
   src.core.learner.optimizer.optimizer_test \
   src.core.learner.checkpoint.checkpoint_test \
   src.core.learner.replay_buffer.replay_buffer_test \

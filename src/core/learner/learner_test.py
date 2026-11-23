@@ -129,6 +129,47 @@ class LearnerTest(unittest.TestCase):
             learner.step()
         torch.testing.assert_close(learner.get_inference_model().state_dict(), before)
 
+    def test_step_updates_ema_once_and_resume_preserves_the_average(self) -> None:
+        model = TinyModel()
+        config = replace(self.config, mini_batch_size=1, ema_enabled=True, ema_tau=0.25)
+        learner = Learner(lambda: model, self.make_optimizer, config)
+        inference = learner.get_inference_model()
+        before = deepcopy(model.state_dict())
+        self.assertIsNot(inference, model)
+        torch.testing.assert_close(inference.state_dict(), before, rtol=0, atol=0)
+        self.assertIsNone(learner.step())
+        learner.add_samples(self.samples)
+
+        with patch.object(model, "forward", wraps=model.forward) as forward:
+            metrics = learner.step()
+
+        self.assertEqual(forward.call_count, 3)
+        self.assertEqual(metrics.step, 1)
+        self.assertEqual(metrics.batch_size, 3)
+        expected = {
+            name: torch.lerp(value, model.state_dict()[name], config.ema_tau)
+            for name, value in before.items()
+        }
+        self.assertFalse(torch.equal(model.policy.weight, expected["policy.weight"]))
+        for _ in range(2):
+            self.assertIs(learner.get_inference_model(), inference)
+            torch.testing.assert_close(inference.state_dict(), expected)
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "learner.pt"
+            learner.save_checkpoint(path)
+            resumed = Learner(TinyModel, self.make_optimizer, config)
+            resumed_inference = resumed.get_inference_model()
+            resumed.load_checkpoint(path)
+
+        self.assertEqual(resumed.step_count, 1)
+        self.assertIs(resumed.get_inference_model(), resumed_inference)
+        torch.testing.assert_close(
+            resumed_inference.state_dict(), expected, rtol=0, atol=0
+        )
+        resumed.add_samples(self.samples)
+        self.assertEqual(resumed.step().step, 2)
+
     def test_rejects_invalid_configuration(self) -> None:
         cases = (
             ({"board_size": 0}, "board_size"),
@@ -137,6 +178,17 @@ class LearnerTest(unittest.TestCase):
             ({"target_samples": 2}, "target_samples"),
             ({"value_loss_weight": -1}, "value_loss_weight"),
             ({"value_loss_weight": float("nan")}, "value_loss_weight"),
+            ({"mini_batch_size": 0}, "mini_batch_size"),
+            ({"mini_batch_size": -1}, "mini_batch_size"),
+            ({"mini_batch_size": True}, "mini_batch_size"),
+            ({"mini_batch_size": 1.0}, "mini_batch_size"),
+            ({"mini_batch_size": 4}, "mini_batch_size"),
+            ({"mini_batch_size": 2}, "mini_batch_size"),
+            ({"ema_enabled": 1}, "ema_enabled"),
+            ({"ema_tau": False}, "ema_tau"),
+            ({"ema_tau": 0}, "ema_tau"),
+            ({"ema_tau": 1.01}, "ema_tau"),
+            ({"ema_tau": float("nan")}, "ema_tau"),
         )
         for changes, message in cases:
             with self.subTest(changes=changes):
