@@ -43,7 +43,7 @@ def test_local_ema_preset_round_trip(tmp_path):
     config = load_training_config(_TRAINING_CONFIGS / "go_9x9_local_ema.toml")
     learner = config.learner
     schedule = config.schedule
-    assert config.pool_id == "train-go-9x9-local-ema"
+    assert config.pool_id == "train-go-9x9-local-ema-no-resign"
     assert (learner.batch_size, learner.mini_batch_size) == (1024, 512)
     assert (learner.min_train_samples, learner.target_samples) == (2000, 500_000)
     assert learner.ema_enabled and learner.ema_tau == 0.05
@@ -51,6 +51,7 @@ def test_local_ema_preset_round_trip(tmp_path):
     assert schedule.train_steps_per_round == 4
     assert schedule.checkpoint_every_rounds == 10
     assert config.alphazero.num_simulations == 256
+    assert config.alphazero.disable_resign_ratio == 1.0
     assert not config.selfplay.quiet
 
     snapshot = tmp_path / "snapshot.toml"

@@ -1,5 +1,5 @@
 [run]
-pool_id = "train-go-9x9-local-ema"
+pool_id = "train-go-9x9-local-ema-no-resign"
 runs_dir = "runs"
 
 [go]
@@ -54,7 +54,7 @@ dirichlet_alpha = 0.11
 dirichlet_epsilon = 0.25
 random_rotation_features = true
 resign_threshold = -0.9
-disable_resign_ratio = 0.1
+disable_resign_ratio = 1.0
 
 [schedule]
 warmup_train_steps = 0

@@ -23,7 +23,7 @@ docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --b
 
 | 设置 | [联调配置](../configs/training/go_9x9_smoke.toml) | [首版训练配置](../configs/training/go_9x9_az.toml) | [本机 EMA 实验](../configs/training/go_9x9_local_ema.toml) |
 | --- | --- | --- | --- |
-| 棋谱池 `[run].pool_id` | `smoke-go-9x9` | `train-go-9x9-az` | `train-go-9x9-local-ema` |
+| 棋谱池 `[run].pool_id` | `smoke-go-9x9` | `train-go-9x9-az` | `train-go-9x9-local-ema-no-resign` |
 | Learner 设备 `[learner].device` | `cpu` | `cuda` | `cuda` |
 | 编译训练前向 `[learner].compile_model` | `false` | `true` | `false` |
 | EMA `[learner].ema_enabled` | `false` | `false` | `true`，`tau = 0.05` |
@@ -58,7 +58,7 @@ docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_smo
 docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_az.toml
 ```
 
-本机 EMA 实验使用独立棋谱池。累计至少 40 盘新棋局成功复盘并产出样本、池内至少有 2,000 个有效位置时执行训练。
+本机 EMA 实验使用独立棋谱池，并禁用自对弈认输。累计至少 40 盘新棋局成功复盘并产出样本、池内至少有 2,000 个有效位置时执行训练。 [训练心得](training-notes/2026-11-23-go-9x9-local-ema.md)
 
 ```powershell
 docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_local_ema.toml
