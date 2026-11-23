@@ -36,7 +36,7 @@ num_threads = 4
 num_parallel_games = 32
 seed = 0
 auto_seed = true
-quiet = false
+quiet = true
 
 [alphazero]
 num_simulations = 200

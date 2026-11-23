@@ -12,7 +12,7 @@ class SelfPlayConfig:
     num_parallel_games: int = 32
     seed: int = 0
     auto_seed: bool = True
-    quiet: bool = False
+    quiet: bool = True
     initial_model: Path | None = None
 
     def __post_init__(self) -> None:
