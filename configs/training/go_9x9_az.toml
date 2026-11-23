@@ -1,0 +1,61 @@
+[run]
+pool_id = "train-go-9x9-az"
+runs_dir = "runs"
+
+[go]
+board_size = 9
+komi = 7.0
+ko_rule = "positional"
+
+[model]
+in_channels = 18
+model_dim = 384
+num_heads = 6
+ffn_hidden_dim = 640
+num_layers = 2
+value_hidden_dim = 256
+num_stem_blocks = 1
+
+[learner]
+device = "cuda"
+batch_size = 1024
+min_train_samples = 100_000
+# 按每轮 2,000 局、最近 20 轮、每局约 100 个样本折算。
+target_samples = 4_000_000
+value_loss_weight = 1.0
+compile_model = true
+
+[optimizer]
+lr = 3e-4
+weight_decay = 0.0
+
+[selfplay]
+engine_path = "build/minizero/go/minizero_go"
+config_path = "configs/minizero/go_9x9_az.cfg"
+num_threads = 4
+num_parallel_games = 32
+seed = 0
+auto_seed = true
+quiet = false
+
+[alphazero]
+num_simulations = 200
+puct_base = 19652.0
+puct_init = 1.25
+reward_discount = 1.0
+value_rescale = false
+action_selection = "softmax_count"
+temperature = 1.0
+use_dirichlet_noise = true
+dirichlet_alpha = 0.11
+dirichlet_epsilon = 0.25
+random_rotation_features = true
+resign_threshold = -0.9
+disable_resign_ratio = 0.1
+
+[schedule]
+warmup_train_steps = 0
+games_per_round = 2000
+min_new_games_before_train = 0
+train_steps_per_round = 200
+max_rounds = 300
