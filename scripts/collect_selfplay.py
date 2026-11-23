@@ -1,30 +1,25 @@
 """Write existing or newly collected MiniZero game records to PostgreSQL."""
 
 import argparse
-import hashlib
 import os
 import sys
-from collections.abc import Iterable
-from itertools import islice
 from pathlib import Path
-from uuid import UUID, uuid4, uuid5
+from uuid import UUID
 
-from src.data.minizero_selfplay.minizero_selfplay import (
-    iter_complete_records,
-    read_effective_config,
-    selfplay_stdout,
+from src.control.selfplay_collector.selfplay_collector import (
+    collect_live,
+    import_records,
 )
 from src.data.postgresql_store.postgresql_store import PostgreSQLStore
 from src.data_types.source_run.source_run import SourceRun
 
 
-def _append_records(store: PostgreSQLStore, source: SourceRun, records: Iterable[str]) -> int:
-    count = 0
-    for count, record in enumerate(records, start=1):
-        game_id = uuid5(source.source_run_id, str(count))
-        ingest_seq = store.append_game(source.pool_id, game_id, source.source_run_id, record)
-        print(f"game_id={game_id} ingest_seq={ingest_seq}", flush=True)
-    return count
+def _print_source(source: SourceRun) -> None:
+    print(f"pool_id={source.pool_id} source_run_id={source.source_run_id}", flush=True)
+
+
+def _print_game(game_id: UUID, ingest_seq: int) -> None:
+    print(f"game_id={game_id} ingest_seq={ingest_seq}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,48 +59,34 @@ def main(argv: list[str] | None = None) -> int:
         parser.exit(1, "psycopg is required. Rebuild the dev image or install psycopg in your Python environment.\n")
 
     try:
-        command = None
-        if args.record_file is not None:
-            source = SourceRun(
-                source_run_id=args.source_run_id,
-                pool_id=args.pool_id,
-                model_sha256=args.model_sha256.lower(),
-                minizero_commit=args.minizero_commit.lower(),
-                effective_config=args.effective_config.read_text(encoding="utf-8"),
-            )
-        else:
-            engine = args.engine.resolve()
-            commit_file = engine.with_name(f"{engine.name}.commit")
-            if not commit_file.is_file():
-                raise ValueError(f"Missing {commit_file}. Build the engine with scripts/build_minizero.sh.")
-            model_path = str(args.model)
-            if model_path != model_path.strip() or any(char in model_path for char in ":#\r\n"):
-                raise ValueError("The model path cannot contain ':', '#', line breaks or surrounding whitespace.")
-            with args.model.open("rb") as model_file:
-                model_sha256 = hashlib.file_digest(model_file, "sha256").hexdigest()
-            overrides = ":".join(filter(None, (args.conf_str, f"nn_file_name={model_path}")))
-            command = [str(engine), "-conf_file", str(args.config), "-conf_str", overrides]
-            source = SourceRun(
-                source_run_id=uuid4(),
-                pool_id=args.pool_id,
-                model_sha256=model_sha256,
-                minizero_commit=commit_file.read_text(encoding="ascii").strip(),
-                effective_config=read_effective_config(command),
-            )
-
         with psycopg.connect(database_url, autocommit=True) as connection:
             store = PostgreSQLStore(connection)
-            store.register_source(source)
-            print(f"pool_id={source.pool_id} source_run_id={source.source_run_id}", flush=True)
-            input_stream = selfplay_stdout(command) if command else args.record_file.open(encoding="utf-8")
-            with input_stream as lines:
-                count = _append_records(store, source, islice(iter_complete_records(lines), args.games))
+            if args.record_file is not None:
+                source = SourceRun(
+                    source_run_id=args.source_run_id,
+                    pool_id=args.pool_id,
+                    model_sha256=args.model_sha256.lower(),
+                    minizero_commit=args.minizero_commit.lower(),
+                    effective_config=args.effective_config.read_text(encoding="utf-8"),
+                )
+                result = import_records(
+                    store, source, args.record_file,
+                    on_source_registered=_print_source, on_game_committed=_print_game,
+                )
+            else:
+                result = collect_live(
+                    store,
+                    pool_id=args.pool_id,
+                    games=args.games,
+                    engine_path=args.engine,
+                    config_path=args.config,
+                    model_path=args.model,
+                    overrides=args.conf_str,
+                    on_source_registered=_print_source,
+                    on_game_committed=_print_game,
+                )
 
-        if args.games is not None and count < args.games:
-            raise RuntimeError(f"MiniZero ended after {count} of {args.games} requested games.")
-        if count == 0:
-            raise ValueError(f"No complete SelfPlay records in {args.record_file}.")
-        print(f"Processed {count} complete games.")
+        print(f"Processed {result.games_committed} complete games.")
         return 0
     except (OSError, RuntimeError, ValueError, psycopg.Error) as error:
         print(f"Collection failed: {error}", file=sys.stderr)

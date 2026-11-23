@@ -44,7 +44,7 @@ print(learner.step())
 
 - `add_samples(samples, position="newest")` 按盘加入已有 `TrainingSamples`，返回 `PoolStatus`。历史棋局按从新到旧的顺序回填时使用 `position="oldest"`。
 - `pool_status()` 返回有效位置数、活跃棋局数和就绪状态。`step()` 在池未就绪时返回 `None`。就绪后对抽到的每条样本随机旋转棋盘特征和策略落点，再完成一次参数更新并返回 `StepMetrics`。 [棋盘旋转](rotation/README.md) · [指标字段](../../data_types/step_metrics/README.md)
-- `save_checkpoint(path)` 将原始模型状态、优化器状态和步数写到指定路径，目标目录由入口准备。续训时用匹配的模型和优化器工厂创建 `Learner`，调用 `load_checkpoint(path)` 后从棋谱重建经验池。编译与普通训练共用检查点格式。 [检查点与续训示例](checkpoint/README.md)
+- `save_checkpoint(path)` 将原始模型状态、优化器状态和步数写到指定路径，目标目录由入口准备。续训时用匹配的模型和优化器工厂创建 `Learner`，调用 `load_checkpoint(path)` 后从棋谱重建经验池。`step_count` 返回当前模型已完成的更新步数，包含检查点恢复的步数。编译与普通训练共用检查点格式。[检查点与续训示例](checkpoint/README.md)
 - `get_inference_model()` 返回持有当前权重的原始模型引用。入口可在训练步之间取得副本，将副本设为 `eval()` 后用于推理和导出。 [MiniZero 推理适配规划](../../../首版实现规划.md#接入项目模型)
 
 ## 测试

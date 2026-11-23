@@ -1,6 +1,6 @@
 # MiniZero 自对弈采集
 
-从 MiniZero 的标准输出或已有输出文件中逐行取得完整对局消息。现场采集时，本模块还负责导出生效配置和管理 MiniZero 子进程。命令行参数、采集批次登记和逐局入库由上层采集脚本处理。 [实现代码](minizero_selfplay.py) · [采集脚本](../../../scripts/collect_selfplay.py) · [PostgreSQL 存储](../postgresql_store/README.md)
+从 MiniZero 的标准输出或已有输出文件中逐行取得完整对局消息。现场采集时，本模块还负责导出生效配置和管理 MiniZero 子进程。独立采集脚本和训练控制器通过共用采集模块登记批次并逐局入库。[实现代码](minizero_selfplay.py) · [共用采集模块](../../control/selfplay_collector/README.md)
 
 ## 读取已有输出
 

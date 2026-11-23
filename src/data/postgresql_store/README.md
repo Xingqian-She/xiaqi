@@ -1,6 +1,6 @@
 # PostgreSQL 棋谱存储
 
-`PostgreSQLStore` 登记 MiniZero 自对弈的来源信息，并将每盘棋的原始 `SelfPlay` 消息逐局写入 PostgreSQL。采集脚本负责筛选完整消息和生成棋局 ID。复盘时可将库里的 `record_text` 交给 `parse_record()`。 [实现代码](postgresql_store.py) · [自对弈采集](../minizero_selfplay/README.md) · [棋谱解析](../minizero_record/README.md)
+`PostgreSQLStore` 登记 MiniZero 自对弈的来源信息，并将每盘棋的原始 `SelfPlay` 消息逐局写入 PostgreSQL。采集模块负责筛选完整消息和生成棋局 ID。复盘时可将库里的 `record_text` 交给 `parse_record()`。[实现代码](postgresql_store.py) · [自对弈采集](../../control/selfplay_collector/README.md) · [棋谱解析](../minizero_record/README.md)
 
 ## 数据表
 

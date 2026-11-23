@@ -55,6 +55,11 @@ class Learner:
     def pool_status(self) -> PoolStatus:
         return self._replay_buffer.pool_status()
 
+    @property
+    def step_count(self) -> int:
+        """当前模型已完成的更新步数。"""
+        return self._step
+
     def step(self) -> StepMetrics | None:
         status = self.pool_status()
         if not status.ready:

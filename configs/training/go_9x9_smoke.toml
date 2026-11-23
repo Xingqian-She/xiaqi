@@ -1,0 +1,59 @@
+[run]
+pool_id = "smoke-go-9x9"
+runs_dir = "runs"
+
+[go]
+board_size = 9
+komi = 7.0
+ko_rule = "positional"
+
+[model]
+in_channels = 18
+model_dim = 8
+num_heads = 2
+ffn_hidden_dim = 8
+num_layers = 1
+value_hidden_dim = 4
+
+[learner]
+device = "cpu"
+batch_size = 2
+min_train_samples = 4
+target_samples = 64
+seed = 0
+value_loss_weight = 1.0
+
+[optimizer]
+lr = 0.001
+weight_decay = 0.0001
+
+[selfplay]
+engine_path = "build/minizero/go/minizero_go"
+config_path = "configs/minizero/go_9x9_az.cfg"
+num_threads = 1
+num_parallel_games = 1
+seed = 0
+auto_seed = true
+quiet = true
+
+[alphazero]
+num_simulations = 2
+puct_base = 19652.0
+puct_init = 1.25
+reward_discount = 1.0
+value_rescale = false
+action_selection = "softmax_count"
+temperature = 1.0
+use_dirichlet_noise = true
+dirichlet_alpha = 0.11
+dirichlet_epsilon = 0.25
+random_rotation_features = true
+resign_threshold = -0.9
+disable_resign_ratio = 1.0
+
+[schedule]
+warmup_train_steps = 0
+games_per_round = 2
+min_new_games_before_train = 2
+train_steps_per_round = 2
+max_rounds = 2
