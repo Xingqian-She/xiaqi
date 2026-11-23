@@ -49,6 +49,16 @@ RUN . /etc/os-release \
     && pg_conftool "$PG_MAJOR" main set listen_addresses localhost \
     && rm -rf "/var/lib/postgresql/$PG_MAJOR/main" /var/lib/apt/lists/*
 
+# Reuse the base Python packages, including PyTorch, Psycopg, and pip.
+RUN python -m venv --system-site-packages --without-pip /opt/xiaqi-venv
+
+ENV VIRTUAL_ENV=/opt/xiaqi-venv \
+    PATH="/opt/xiaqi-venv/bin:${PATH}"
+
+RUN python -m pip install --no-cache-dir tensorboard==2.21.0 tomli-w==1.2.0 \
+    && python -c 'import psycopg; import tomli_w; from torch.utils.tensorboard import SummaryWriter' \
+    && tensorboard --version
+
 COPY docker/dev-entrypoint.py /usr/local/bin/xiaqi-dev-entrypoint.py
 
 WORKDIR /workspace

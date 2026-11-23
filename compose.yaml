@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: xiaqi/dev:latest
+    image: &dev-image xiaqi/dev:latest
     init: true
     stdin_open: true
     tty: true
@@ -19,6 +19,23 @@ services:
       - type: volume
         source: postgresql-data
         target: /var/lib/postgresql
+
+  tensorboard:
+    image: *dev-image
+    pull_policy: never
+    profiles: [tensorboard]
+    init: true
+    entrypoint: [tensorboard]
+    command: [--logdir, /runs, --host, 0.0.0.0, --port, "6006"]
+    ports:
+      - "127.0.0.1:6006:6006"
+    volumes:
+      - type: bind
+        source: ./runs
+        target: /runs
+        read_only: true
+        bind:
+          create_host_path: true
 
 volumes:
   postgresql-data:

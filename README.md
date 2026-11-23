@@ -32,6 +32,18 @@ docker compose build --build-arg http_proxy=http://host.docker.internal:7897 --b
 
 仓库挂载到 `/workspace`，修改代码无需重建镜像；输入 `exit` 退出容器。
 
+### TensorBoard
+
+构建 `dev` 镜像后，在仓库根目录按需启动查看器。
+
+```powershell
+docker compose up -d tensorboard
+```
+
+查看器只读挂载仓库的 `runs/` 目录。训练写入事件文件后，可在本机浏览器查看曲线。[打开 TensorBoard](http://127.0.0.1:6006)
+
+用 `docker compose stop tensorboard` 停止查看器。
+
 ### PostgreSQL
 
 开发容器启动时会启动 PostgreSQL。在容器的终端中用下面的命令连接，输入 `\q` 退出。
