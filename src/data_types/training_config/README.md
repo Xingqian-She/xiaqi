@@ -1,3 +1,3 @@
 # TrainingConfig
 
-汇总 `go`、`model`、`learner`、`optimizer`、`selfplay`、`alphazero` 和 `schedule`。`pool_id` 选择历史棋谱及新棋谱所在的 PostgreSQL 池，`runs_dir` 默认为 `runs`。 [类型定义](training_config.py) · [总配置读写](../../control/config_io/README.md)
+汇总 `go`、`model`、`learner`、`optimizer`、`selfplay`、`alphazero` 和 `schedule`。配置文件所在目录确定运行产物的位置，启动器按实验名选择棋谱数据库。 [类型定义](training_config.py) · [配置加载](../../control/config_io/README.md)

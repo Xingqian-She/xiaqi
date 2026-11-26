@@ -1,3 +1,4 @@
-configs/minizero/*.cfg text eol=lf
+runs/*/*.cfg text eol=lf
 scripts/*.sh text eol=lf
+src/data/postgresql/*.sh text eol=lf
 third_party/minizero-sp-commands.patch text eol=lf

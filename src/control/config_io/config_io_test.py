@@ -1,62 +1,38 @@
 import re
-import tomllib
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
-import torch
 
-from .config_io import load_training_config, save_training_config
+from .config_io import load_training_config
 
 _REPO = Path(__file__).resolve().parents[3]
-_TRAINING_CONFIGS = _REPO / "configs/training"
-_SMOKE_CONFIG = _TRAINING_CONFIGS / "go_9x9_smoke.toml"
+_RUNS = _REPO / "runs"
+_SMOKE_CONFIG = _RUNS / "smoke/config.toml"
 
 
-def test_snapshot_round_trip_uses_repository_paths(tmp_path, monkeypatch):
-    pytest.importorskip("tomli_w")
-    config = load_training_config(_SMOKE_CONFIG)
-    config = replace(
-        config,
-        learner=replace(config.learner, device=torch.device("cpu"), seed=None),
-        selfplay=replace(config.selfplay, initial_model=_REPO / "models/initial.pt"),
+def test_paths_follow_the_experiment_directory(tmp_path, monkeypatch):
+    experiment = tmp_path / "elsewhere" / "experiment"
+    experiment.mkdir(parents=True)
+    toml = _SMOKE_CONFIG.read_text(encoding="utf-8").replace(
+        "[selfplay]", '[selfplay]\ninitial_model = "models/initial.pt"'
     )
+    path = experiment / "config.toml"
+    path.write_text(toml, encoding="utf-8")
     monkeypatch.chdir(tmp_path)
-    save_training_config(config, "snapshot.toml")
-    reloaded = load_training_config("snapshot.toml")
-    assert reloaded == replace(config, learner=replace(config.learner, device="cpu"))
-    assert reloaded.model.board_size == reloaded.learner.board_size == 9
-    assert reloaded.selfplay.config_path == _REPO / "configs/minizero/go_9x9_az.cfg"
-    assert "seed" not in tomllib.loads(Path("snapshot.toml").read_text(encoding="utf-8"))["learner"]
+    config = load_training_config(path.relative_to(tmp_path))
+    assert config.model.board_size == config.learner.board_size == 9
+    assert config.selfplay.engine_path == _REPO / "build/minizero/go/minizero_go"
+    assert config.selfplay.config_path == experiment / "minizero_base.cfg"
+    assert config.selfplay.initial_model == experiment / "models/initial.pt"
 
 
-@pytest.mark.parametrize("name", ["go_9x9_smoke.toml", "go_9x9_az.toml"])
+@pytest.mark.parametrize("name", ["smoke", "go-9x9-az"])
 def test_existing_presets_use_one_mini_batch_and_ema_is_off(name):
-    config = load_training_config(_TRAINING_CONFIGS / name)
+    config = load_training_config(_RUNS / name / "config.toml")
+    assert config.selfplay.config_path.is_file()
     assert config.learner.mini_batch_size is None
     assert not config.learner.ema_enabled
     assert config.schedule.checkpoint_every_rounds == 1
-
-
-def test_local_ema_preset_round_trip(tmp_path):
-    pytest.importorskip("tomli_w")
-    config = load_training_config(_TRAINING_CONFIGS / "go_9x9_local_ema.toml")
-    learner = config.learner
-    schedule = config.schedule
-    assert config.pool_id == "train-go-9x9-local-ema-no-resign"
-    assert (learner.batch_size, learner.mini_batch_size) == (1024, 512)
-    assert (learner.min_train_samples, learner.target_samples) == (2000, 500_000)
-    assert learner.ema_enabled and learner.ema_tau == 0.05
-    assert (schedule.games_per_round, schedule.min_new_games_before_train) == (40, 40)
-    assert schedule.train_steps_per_round == 4
-    assert schedule.checkpoint_every_rounds == 10
-    assert config.alphazero.num_simulations == 256
-    assert config.alphazero.disable_resign_ratio == 1.0
-    assert not config.selfplay.quiet
-
-    snapshot = tmp_path / "snapshot.toml"
-    save_training_config(config, snapshot)
-    assert load_training_config(snapshot) == config
 
 
 @pytest.mark.parametrize(
@@ -64,7 +40,7 @@ def test_local_ema_preset_round_trip(tmp_path):
     [
         ("[go]", "[extra]", "[extra]"),
         ("board_size = 9", "board_size = true", "[go].board_size"),
-        ("pool_id = \"smoke-go-9x9\"", "pool_id = \"  \"", "[run].pool_id"),
+        ("[go]", "[run]\npool_id = \"old-pool\"\n[go]", "[run]"),
         ("[model]", "[model]\nboard_size = 13", "[model].board_size"),
         ("in_channels = 18", "in_channels = 17", "[model].in_channels"),
         ("[learner]", "[learner]\nmini_batch_size = true", "[learner].mini_batch_size"),

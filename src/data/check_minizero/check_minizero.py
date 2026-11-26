@@ -5,7 +5,7 @@ from types import ModuleType
 
 import numpy as np
 
-CONFIG_PATH = Path(__file__).resolve().parents[3] / "configs/minizero/go_9x9_az.cfg"
+CONFIG_PATH = Path(__file__).resolve().parents[3] / "runs/go-9x9-az/minizero_base.cfg"
 BOARD_SIZE = 9
 BLACK, WHITE = 1, 2
 PASS = BOARD_SIZE**2

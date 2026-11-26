@@ -21,6 +21,19 @@ dist/
 # Local data, models, and temporary output
 /data/
 /models/
-/runs/
+/runs/*
+!/runs/smoke/
+!/runs/go-9x9-az/
+!/runs/go-9x9-ema/
+!/runs/go-9x9-ema-early/
+/runs/*/*
+!/runs/smoke/config.toml
+!/runs/smoke/minizero_base.cfg
+!/runs/go-9x9-az/config.toml
+!/runs/go-9x9-az/minizero_base.cfg
+!/runs/go-9x9-ema/config.toml
+!/runs/go-9x9-ema/minizero_base.cfg
+!/runs/go-9x9-ema-early/config.toml
+!/runs/go-9x9-ema-early/minizero_base.cfg
 /tmp/
 *.log

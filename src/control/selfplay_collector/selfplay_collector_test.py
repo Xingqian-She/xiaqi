@@ -24,8 +24,8 @@ class _Store:
     def register_source(self, source):
         assert self.sources.setdefault(source.source_run_id, source) == source
 
-    def append_game(self, pool_id, game_id, source_run_id, record):
-        assert self.sources[source_run_id].pool_id == pool_id
+    def append_game(self, game_id, source_run_id, record):
+        assert source_run_id in self.sources
         existing = self.games.setdefault(game_id, (record, len(self.games) + 1))
         assert existing[0] == record
         return existing[1]
@@ -33,7 +33,7 @@ class _Store:
 
 def test_import_reuses_source_and_game_ids_after_retry(tmp_path):
     store = _Store()
-    source = SourceRun(uuid4(), "test", "a" * 64, "b" * 40, "env_board_size=9")
+    source = SourceRun(uuid4(), "a" * 64, "b" * 40, "env_board_size=9")
     path = tmp_path / "selfplay.txt"
     path.write_text(f"ordinary output\n{_RECORD}\nSelfPlay false intermediate #\n{_RECORD}\n",
                     encoding="utf-8")
@@ -51,7 +51,7 @@ def test_import_reuses_source_and_game_ids_after_retry(tmp_path):
 
 
 def test_live_validates_torchscript_and_effective_config(tmp_path, monkeypatch):
-    config = load_training_config(_ROOT / "configs/training/go_9x9_smoke.toml")
+    config = load_training_config(_ROOT / "runs/smoke/config.toml")
     config = replace(config, alphazero=replace(config.alphazero, action_selection="max_count"))
     overrides = collector.training_overrides(config)
     model = tmp_path / "weights.pt"
@@ -79,7 +79,7 @@ def test_live_validates_torchscript_and_effective_config(tmp_path, monkeypatch):
     monkeypatch.setattr(collector, "selfplay_stdout", selfplay)
     store = _Store()
     arguments = dict(
-        pool_id="test", games=1, engine_path=Path("engine"),
+        games=1, engine_path=Path("engine"),
         config_path=config.selfplay.config_path, model_path=Path(model.name), overrides=overrides,
     )
     result = collector.collect_live(store, **arguments)

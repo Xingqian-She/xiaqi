@@ -19,13 +19,13 @@ docker compose run --rm --no-deps -T dev bash scripts/build_minizero.sh --python
 
 ### 公开权重
 
-GTP 和下面的自对弈调试示例使用 MiniZero 公开的 9×9 Go AlphaZero 权重。从下载页的 9x9 Go 的 Trained Models 获取权重包，解压出 `n=200` 的 AlphaZero 权重，将其保存为 `models/minizero/go_9x9_az_n200.pt`。这两个示例使用项目的 9×9 配置。 [MiniZero 公开权重下载页](https://rlg.iis.sinica.edu.tw/papers/minizero/#downloads) · [9×9 配置](../configs/minizero/go_9x9_az.cfg)
+GTP 和下面的自对弈调试示例使用 MiniZero 公开的 9×9 Go AlphaZero 权重。从下载页的 9x9 Go 的 Trained Models 获取权重包，解压出 `n=200` 的 AlphaZero 权重，将其保存为 `models/minizero/go_9x9_az_n200.pt`。这两个示例使用项目的 9×9 配置。 [MiniZero 公开权重下载页](https://rlg.iis.sinica.edu.tw/papers/minizero/#downloads) · [9×9 配置](../runs/go-9x9-az/minizero_base.cfg)
 
 ### GTP 落子
 
 ```powershell
 docker compose run --rm --no-deps dev ./build/minizero/go/minizero_go `
-  -mode console -conf_file configs/minizero/go_9x9_az.cfg `
+  -mode console -conf_file runs/go-9x9-az/minizero_base.cfg `
   -conf_str 'nn_file_name=models/minizero/go_9x9_az_n200.pt:actor_select_action_by_count=true:actor_select_action_by_softmax_count=false:actor_use_dirichlet_noise=false'
 ```
 
@@ -35,7 +35,7 @@ docker compose run --rm --no-deps dev ./build/minizero/go/minizero_go `
 
 ```powershell
 docker compose run --rm --no-deps dev ./build/minizero/go/minizero_go `
-  -mode sp -conf_file configs/minizero/go_9x9_az.cfg `
+  -mode sp -conf_file runs/go-9x9-az/minizero_base.cfg `
   -conf_str 'nn_file_name=models/minizero/go_9x9_az_n200.pt:zero_num_parallel_games=1:zero_num_threads=1:zero_disable_resign_ratio=1'
 ```
 

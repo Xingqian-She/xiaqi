@@ -1,0 +1,62 @@
+[go]
+board_size = 9
+komi = 7.0
+ko_rule = "positional"
+
+[model]
+board_size = 9
+in_channels = 18
+model_dim = 512
+num_heads = 8
+ffn_hidden_dim = 1408
+num_layers = 4
+value_hidden_dim = 256
+num_stem_blocks = 2
+
+[learner]
+board_size = 9
+device = "cuda"
+batch_size = 4096
+min_train_samples = 4096
+target_samples = 1_000_000
+value_loss_weight = 1.0
+compile_model = false
+mini_batch_size = 512
+ema_enabled = true
+ema_tau = 0.05
+
+[optimizer]
+lr = 0.0003
+weight_decay = 0.0
+
+[selfplay]
+engine_path = "build/minizero/go/minizero_go"
+config_path = "minizero_base.cfg"
+num_threads = 4
+num_parallel_games = 32
+seed = 0
+auto_seed = true
+quiet = false
+
+[alphazero]
+num_simulations = 400
+puct_base = 19652.0
+puct_init = 1.25
+reward_discount = 1.0
+value_rescale = false
+action_selection = "softmax_count"
+temperature = 1.0
+use_dirichlet_noise = true
+dirichlet_alpha = 0.11
+dirichlet_epsilon = 0.25
+random_rotation_features = true
+resign_threshold = -0.9
+disable_resign_ratio = 0.1
+
+[schedule]
+games_per_round = 160
+train_steps_per_round = 6
+max_rounds = 100000
+warmup_train_steps = 0
+min_new_games_before_train = 40
+checkpoint_every_rounds = 10

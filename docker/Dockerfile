@@ -55,12 +55,10 @@ RUN python -m venv --system-site-packages --without-pip /opt/xiaqi-venv
 ENV VIRTUAL_ENV=/opt/xiaqi-venv \
     PATH="/opt/xiaqi-venv/bin:${PATH}"
 
-RUN python -m pip install --no-cache-dir tensorboard==2.21.0 tomli-w==1.2.0 \
-    && python -c 'import psycopg; import tomli_w; from torch.utils.tensorboard import SummaryWriter' \
+RUN python -m pip install --no-cache-dir tensorboard==2.21.0 \
+    && python -c 'import psycopg; from filelock import FileLock; from torch.utils.tensorboard import SummaryWriter' \
     && tensorboard --version
 
-COPY docker/dev-entrypoint.py /usr/local/bin/xiaqi-dev-entrypoint.py
-
 WORKDIR /workspace
-ENTRYPOINT ["python", "/usr/local/bin/xiaqi-dev-entrypoint.py"]
+ENTRYPOINT []
 CMD ["/bin/bash"]

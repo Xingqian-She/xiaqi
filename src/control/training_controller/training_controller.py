@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import signal
 from collections import Counter
 from collections.abc import Iterator
@@ -18,25 +20,21 @@ from types import FrameType
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID
 
+from filelock import FileLock, Timeout
 from torch.optim import AdamW
 
 from ...core.learner.learner import Learner
 from ...core.model.transformer.transformer import Transformer
 from ...data.minizero_record.minizero_record import RecordParseError, parse_record
 from ...data.minizero_replay.minizero_replay import ReplayError, replay_record
-from ...data.postgresql_reader.postgresql_reader import PostgreSQLReader
-from ...data.postgresql_store.postgresql_store import PostgreSQLStore
+from ...data.postgresql.postgresql import PostgreSQLStore
 from ...data_types.game_record.game_record import GameRecord
 from ...data_types.go_rules_config.go_rules_config import GoRulesConfig
 from ...data_types.source_run.source_run import SourceRun
 from ...data_types.stored_game.stored_game import StoredGame
 from ...data_types.training_config.training_config import TrainingConfig
 from ...integrations.minizero.torchscript_export import export_minizero_torchscript
-from ..config_io.config_io import (
-    resolve_training_paths,
-    save_training_config,
-    validate_training_config,
-)
+from ..config_io.config_io import load_training_config
 from ..run_log.run_log import EventCallback, RunLog
 from ..selfplay_collector.selfplay_collector import (
     collect_live,
@@ -70,20 +68,41 @@ class TrainingController:
 
     def __init__(
         self,
-        config: TrainingConfig,
-        connection: Connection,
+        config_path: Path,
         *,
         on_event: EventCallback | None = None,
     ) -> None:
-        validate_training_config(config)
-        self._config = resolve_training_paths(config)
-        self._reader = PostgreSQLReader(connection)
-        self._store = PostgreSQLStore(connection)
+        self._config_path = config_path.resolve(strict=True)
+        experiment = os.environ.get("XIAQI_EXPERIMENT_DIR")
+        if experiment and self._config_path.parent != Path(experiment).resolve(strict=True):
+            raise ValueError(
+                f"Configuration {self._config_path} is outside the database experiment {experiment}."
+            )
         self._on_event = on_event
 
-    def run(self, *, resume: Path | None = None, config_path: Path | None = None) -> Path:
-        """Start a new run and return its directory on completion."""
-        self._log = RunLog(self._config.runs_dir, self._on_event)
+    def run(self, connection: Connection, *, resume: bool = False) -> Path:
+        """Train with exclusive access to this experiment and its latest checkpoint."""
+        if type(resume) is not bool:
+            raise TypeError("resume must be a boolean selecting the experiment's latest checkpoint.")
+        directory = self._config_path.parent
+        lock = FileLock(directory / ".training.lock")
+        try:
+            acquired = lock.acquire(timeout=0)
+        except Timeout as error:
+            raise TrainingRunError(f"Another trainer is using experiment {directory}.") from error
+        with acquired:
+            return self._run_locked(connection, resume)
+
+    def _run_locked(self, connection: Connection, resume: bool) -> Path:
+        self._log = RunLog(self._config_path.parent, self._on_event)
+        checkpoint = _latest_checkpoint(self._log.checkpoints)
+        if resume and checkpoint is None:
+            raise FileNotFoundError(f"No training checkpoint found in {self._log.checkpoints}.")
+        if not resume and checkpoint is not None:
+            raise ValueError("The experiment already has checkpoints. Use --resume.")
+        config_text = self._config_path.read_text(encoding="utf-8")
+        self._config = load_training_config(self._config_path, text=config_text)
+        self._store = PostgreSQLStore(connection)
         self._phase = "startup"
         self._round: int | None = None
         self._step = 0
@@ -98,7 +117,7 @@ class TrainingController:
         try:
             self._log.open()
             with TemporaryDirectory(prefix="xiaqi-selfplay-", dir=_SELFPLAY_MODEL_ROOT) as directory:
-                summary = self._execute(resume, config_path, Path(directory) / "model.pt")
+                summary = self._execute(checkpoint, config_text, Path(directory) / "model.pt")
             self._phase = "finish"
             self._log.close_metrics()
             self._event("run_finished", round=None, source_run_id=None, **summary)
@@ -111,11 +130,12 @@ class TrainingController:
         return self._log.directory
 
     def _execute(
-        self, resume: Path | None, config_path: Path | None, model_path: Path
+        self, resume: Path | None, config_toml: str, model_path: Path
     ) -> dict[str, int | float]:
         self._phase = "snapshot_config"
-        config, external_model = self._snapshot_config(resume, config_path)
-        self._event("run_started", pool_id=config.pool_id, run_dir=self._log.directory)
+        config, external_model = self._snapshot_config(
+            resume, config_toml, model_path.with_name("minizero_base.cfg")
+        )
 
         self._phase = "initialize_learner"
         self._learner = Learner(
@@ -128,6 +148,8 @@ class TrainingController:
             resume = resume.resolve()
             self._learner.load_checkpoint(resume)
             self._step = self._learner.step_count
+            if int(resume.stem.removeprefix("step-")) != self._step:
+                raise ValueError(f"Checkpoint step {self._step} does not match {resume.name}.")
             self._last_checkpoint_step = self._step
             self._last_checkpoint_path = resume
             self._checkpoint_safe = True
@@ -135,6 +157,7 @@ class TrainingController:
         else:
             self._checkpoint_safe = True
         start_step = self._step
+        self._log.open_metrics(start_step)
 
         self._phase = "backfill_pool"
         self._backfill_pool()
@@ -166,7 +189,7 @@ class TrainingController:
         return {**summary, "train_steps": self._step - start_step}
 
     def _snapshot_config(
-        self, resume: Path | None, config_path: Path | None
+        self, resume: Path | None, config_toml: str, base_config: Path
     ) -> tuple[TrainingConfig, Path | None]:
         config = self._config
         selfplay = config.selfplay
@@ -181,28 +204,27 @@ class TrainingController:
         else:
             initial_weight_source = "new_model"
 
-        self._log.write_metadata(
-            pool_id=config.pool_id,
-            config_source=config_path.resolve() if config_path is not None else None,
+        base_contents = selfplay.config_path.read_bytes()
+        base_config.write_bytes(base_contents)
+        self._event(
+            "run_started",
+            run_dir=self._log.directory,
+            config_toml=config_toml,
             minizero_base_source=selfplay.config_path,
+            minizero_config=base_contents.decode("utf-8"),
             initial_weight_source=initial_weight_source,
             initial_model=selfplay.initial_model,
+            pinned_initial_model=external_model,
             resume=resume.resolve() if resume is not None else None,
         )
-        base_config = self._log.directory / "minizero_base.cfg"
-        copyfile(selfplay.config_path, base_config)
-        selfplay_snapshot = replace(selfplay, config_path=base_config)
         if external_model is not None and selfplay.initial_model is not None:
-            external_model.parent.mkdir()
-            copyfile(selfplay.initial_model, external_model)
-            selfplay_snapshot = replace(selfplay_snapshot, initial_model=external_model)
-        snapshot = replace(config, selfplay=selfplay_snapshot)
-        save_training_config(snapshot, self._log.directory / "config.toml")
-        return snapshot, external_model
+            external_model.parent.mkdir(exist_ok=True)
+            if selfplay.initial_model != external_model:
+                copyfile(selfplay.initial_model, external_model)
+        return replace(config, selfplay=replace(selfplay, config_path=base_config)), external_model
 
     def _backfill_pool(self) -> None:
-        pool_id = self._config.pool_id
-        page = self._reader.fetch_games_before(pool_id, None, _PAGE_SIZE)
+        page = self._store.fetch_games_before(None, _PAGE_SIZE)
         if page:
             self._cursor = page[0].ingest_seq
         while page:
@@ -210,7 +232,7 @@ class TrainingController:
                 self._replay_game(game, position="oldest")
                 if self._learner.pool_status().sample_count >= self._config.learner.target_samples:
                     return
-            page = self._reader.fetch_games_before(pool_id, page[-1].ingest_seq, _PAGE_SIZE)
+            page = self._store.fetch_games_before(page[-1].ingest_seq, _PAGE_SIZE)
 
     def _run_rounds(self, config: TrainingConfig, model_path: Path) -> dict[str, int | float]:
         schedule = config.schedule
@@ -225,7 +247,6 @@ class TrainingController:
             self._phase = "selfplay"
             result = collect_live(
                 self._store,
-                pool_id=config.pool_id,
                 games=schedule.games_per_round,
                 engine_path=config.selfplay.engine_path,
                 config_path=config.selfplay.config_path,
@@ -274,7 +295,7 @@ class TrainingController:
             stats = _result_metrics(result.games_committed, results)
             train_steps = self._step - round_start_step
             duration = monotonic() - started
-            self._log.add_scalars(round_number, {
+            self._log.log_round(round_number, {
                 **{f"selfplay/{name}": value for name, value in stats.items()},
                 "selfplay/games_with_samples": games_with_samples,
                 "replay/sample_count": status.sample_count,
@@ -301,7 +322,7 @@ class TrainingController:
         results: Counter[int] = Counter()
         games_with_samples = 0
         while self._cursor < end_seq:
-            page = self._reader.fetch_games_after(self._config.pool_id, self._cursor, _PAGE_SIZE)
+            page = self._store.fetch_games_after(self._cursor, _PAGE_SIZE)
             if not page or page[0].ingest_seq > end_seq:
                 raise RuntimeError(f"Cannot read through ingest_seq={end_seq} after {self._cursor}.")
             for game in page:
@@ -353,6 +374,8 @@ class TrainingController:
         if reason != "interrupt":
             self._phase = "save_checkpoint"
         path = self._log.checkpoints / f"step-{self._step:06d}.pt"
+        if path.exists():
+            raise FileExistsError(f"Checkpoint already exists: {path}")
         with _defer_sigint(raise_after=reason != "interrupt"):
             self._learner.save_checkpoint(path)
             self._last_checkpoint_step = self._step
@@ -401,6 +424,15 @@ class TrainingController:
             )
         with suppress(Exception):
             self._log.close()
+
+
+def _latest_checkpoint(directory: Path) -> Path | None:
+    candidates = []
+    for path in directory.glob("step-*.pt"):
+        match = re.fullmatch(r"step-([0-9]+)\.pt", path.name)
+        if match and path.is_file():
+            candidates.append((int(match[1]), path))
+    return max(candidates)[1] if candidates else None
 
 
 @contextmanager

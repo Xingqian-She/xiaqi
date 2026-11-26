@@ -1,4 +1,4 @@
-"""读取训练配置，并保存可用同一入口加载的 TOML 快照。"""
+"""读取、解析并校验实验的训练配置。"""
 
 import tomllib
 from dataclasses import MISSING, fields, replace
@@ -21,23 +21,15 @@ _SECTIONS = ("go", "model", "learner", "optimizer", "selfplay", "alphazero", "sc
 _Config = TypeVar("_Config")
 
 
-def load_training_config(path: str | Path) -> TrainingConfig:
-    with Path(path).open("rb") as file:
-        tables = tomllib.load(file)
-    unknown = tables.keys() - {"run", *_SECTIONS}
+def load_training_config(path: str | Path, *, text: str | None = None) -> TrainingConfig:
+    path = Path(path).resolve()
+    tables = tomllib.loads(path.read_text(encoding="utf-8") if text is None else text)
+    unknown = tables.keys() - set(_SECTIONS)
     if unknown:
         raise ValueError(f"Unknown configuration table [{min(unknown)}].")
 
-    run = _table(tables, "run")
-    _check_fields(run, {"pool_id", "runs_dir"}, "run")
-    if "pool_id" not in run:
-        raise ValueError("[run].pool_id is required.")
-    pool_id = _read_value(run["pool_id"], str, "[run].pool_id")
-    runs_dir = _read_value(run.get("runs_dir", "runs"), Path, "[run].runs_dir")
     go = _load_section(tables, "go", GoRulesConfig)
     config = TrainingConfig(
-        pool_id=pool_id,
-        runs_dir=runs_dir,
         go=go,
         model=_load_section(tables, "model", TransformerConfig, board_size=go.board_size),
         learner=_load_section(tables, "learner", LearnerConfig, board_size=go.board_size),
@@ -47,43 +39,18 @@ def load_training_config(path: str | Path) -> TrainingConfig:
         schedule=_load_section(tables, "schedule", TrainingSchedule),
     )
     validate_training_config(config)
-    return resolve_training_paths(config)
+    return resolve_training_paths(config, path.parent)
 
 
-def save_training_config(config: TrainingConfig, path: str | Path) -> None:
-    import tomli_w
-
-    tables = {
-        "run": {"pool_id": config.pool_id, "runs_dir": _stored_path(config.runs_dir)}
-    }
-    for section in _SECTIONS:
-        settings = getattr(config, section)
-        table = {}
-        for field in fields(settings):
-            value = getattr(settings, field.name)
-            if value is None:
-                continue
-            if isinstance(value, Path):
-                value = _stored_path(value)
-            elif isinstance(value, torch.device):
-                value = str(value)
-            table[field.name] = value
-        tables[section] = table
-
-    with Path(path).open("wb") as file:
-        tomli_w.dump(tables, file)
-
-
-def resolve_training_paths(config: TrainingConfig) -> TrainingConfig:
+def resolve_training_paths(config: TrainingConfig, directory: Path) -> TrainingConfig:
     selfplay = config.selfplay
     return replace(
         config,
-        runs_dir=_repo_path(config.runs_dir),
         selfplay=replace(
             selfplay,
-            engine_path=_repo_path(selfplay.engine_path),
-            config_path=_repo_path(selfplay.config_path),
-            initial_model=_repo_path(selfplay.initial_model)
+            engine_path=(_REPO_ROOT / selfplay.engine_path).resolve(),
+            config_path=(directory / selfplay.config_path).resolve(),
+            initial_model=(directory / selfplay.initial_model).resolve()
             if selfplay.initial_model is not None
             else None,
         ),
@@ -91,8 +58,6 @@ def resolve_training_paths(config: TrainingConfig) -> TrainingConfig:
 
 
 def validate_training_config(config: TrainingConfig) -> None:
-    if not config.pool_id.strip():
-        raise ValueError("[run].pool_id must be nonempty.")
     if config.go.board_size % 2 == 0:
         raise ValueError("[go].board_size must be odd for the Transformer.")
     for section in ("model", "learner"):
@@ -117,17 +82,6 @@ def validate_training_config(config: TrainingConfig) -> None:
         torch.device(learner.device)
     except (RuntimeError, ValueError) as error:
         raise ValueError(f"[learner].device is invalid: {error}") from error
-
-
-def _repo_path(path: Path) -> Path:
-    return (_REPO_ROOT / path).resolve()
-
-
-def _stored_path(path: Path) -> str:
-    absolute = _repo_path(path)
-    if absolute.is_relative_to(_REPO_ROOT):
-        return absolute.relative_to(_REPO_ROOT).as_posix()
-    return absolute.as_posix()
 
 
 def _table(tables: dict[str, Any], name: str) -> dict[str, Any]:

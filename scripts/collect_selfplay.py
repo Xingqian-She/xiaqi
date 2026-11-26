@@ -10,12 +10,12 @@ from src.control.selfplay_collector.selfplay_collector import (
     collect_live,
     import_records,
 )
-from src.data.postgresql_store.postgresql_store import PostgreSQLStore
+from src.data.postgresql.postgresql import PostgreSQLStore
 from src.data_types.source_run.source_run import SourceRun
 
 
 def _print_source(source: SourceRun) -> None:
-    print(f"pool_id={source.pool_id} source_run_id={source.source_run_id}", flush=True)
+    print(f"source_run_id={source.source_run_id}", flush=True)
 
 
 def _print_game(game_id: UUID, ingest_seq: int) -> None:
@@ -24,14 +24,14 @@ def _print_game(game_id: UUID, ingest_seq: int) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pool-id", required=True, help="Destination experience pool.")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--record-file", type=Path, help="Read an existing MiniZero output file.")
     mode.add_argument("--games", type=int, help="Generate and store this many games.")
 
     live = parser.add_argument_group("live self-play")
     live.add_argument("--engine", type=Path, default=Path("build/minizero/go/minizero_go"))
-    live.add_argument("--config", type=Path, default=Path("configs/minizero/go_9x9_az.cfg"))
+    experiment = Path(os.environ.get("XIAQI_EXPERIMENT_DIR", "runs/go-9x9-az"))
+    live.add_argument("--config", type=Path, default=experiment / "minizero_base.cfg")
     live.add_argument("--model", type=Path, default=Path("models/minizero/go_9x9_az_n200.pt"))
     live.add_argument("--conf-str", default="", help="MiniZero configuration overrides.")
 
@@ -64,7 +64,6 @@ def main(argv: list[str] | None = None) -> int:
             if args.record_file is not None:
                 source = SourceRun(
                     source_run_id=args.source_run_id,
-                    pool_id=args.pool_id,
                     model_sha256=args.model_sha256.lower(),
                     minizero_commit=args.minizero_commit.lower(),
                     effective_config=args.effective_config.read_text(encoding="utf-8"),
@@ -76,7 +75,6 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = collect_live(
                     store,
-                    pool_id=args.pool_id,
                     games=args.games,
                     engine_path=args.engine,
                     config_path=args.config,

@@ -1,6 +1,6 @@
 # StoredGame
 
-`PostgreSQLReader` 将每盘已提交的棋谱读成一个 `StoredGame`。 [类型定义](stored_game.py) · [读取接口](../../data/postgresql_reader/README.md)
+`PostgreSQLStore` 将每盘已提交的棋谱读成一个 `StoredGame`。 [类型定义](stored_game.py) · [读取接口](../../data/postgresql/README.md#读写接口)
 
 | 字段 | 含义 |
 | --- | --- |

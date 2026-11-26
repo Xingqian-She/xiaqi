@@ -35,11 +35,11 @@ PY
 
 ## 用导出模型采集一盘
 
-在按当前 Dockerfile 构建的 GPU `dev` 容器中，用 `bash scripts/build_minizero.sh` 构建引擎及其提交号文件。准备 PostgreSQL 表和 `XIAQI_DATABASE_URL` 后，在仓库根目录运行以下命令。 [数据库准备](../../../PostgreSQL.md#初始化数据库) · [MiniZero 构建](../../../third_party/README.md#构建)
+构建引擎及其提交号文件后，进入所选实验的数据库 Shell，再运行以下命令。 [数据库准备](../../../PostgreSQL.md#初始化数据库) · [MiniZero 构建](../../../third_party/README.md#构建)
 
 ```bash
-python -m scripts.collect_selfplay --pool-id tiny-go-9x9 --games 1 \
-  --config configs/minizero/go_9x9_az.cfg --model models/minizero/tiny_go_9x9.pt \
+python -m scripts.collect_selfplay --games 1 \
+  --config runs/go-9x9-az/minizero_base.cfg --model models/minizero/tiny_go_9x9.pt \
   --conf-str 'program_quiet=true:zero_num_threads=1:zero_num_parallel_games=1:actor_num_simulation=2:zero_disable_resign_ratio=1'
 ```
 

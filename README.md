@@ -10,18 +10,17 @@
 
 ## 联调快跑
 
-首次检出后，在仓库根目录用 PowerShell 依次初始化子模块、创建数据卷、构建开发镜像与 MiniZero，再启动联调。
+首次检出后，在仓库根目录用 PowerShell 初始化子模块、构建开发镜像与 MiniZero，再启动联调。
 
 ```powershell
 git submodule update --init -- third_party/minizero
-docker volume create xiaqi-postgresql-data
 docker compose build dev
 docker compose run --rm -T dev bash scripts/build_minizero.sh
 docker compose run --rm -T dev bash scripts/build_minizero.sh --python
-docker compose run --rm -T dev bash scripts/train.sh configs/training/go_9x9_smoke.toml
+.\scripts\run.ps1 smoke -New
 ```
 
-联调从新建的模型开始。Learner 使用 CPU，MiniZero 自对弈仍需要 GPU。脚本初始化默认数据库并打印运行目录。 [联调结果与运行产物](docs/training.md#运行产物与进度)
+联调从新建的模型开始。Learner 使用 CPU，MiniZero 自对弈使用 GPU。训练配置、检查点和独立棋谱库都在 `runs/smoke/`。下次用 `.\scripts\run.ps1 smoke -Resume` 在原目录续训。 [联调结果与运行产物](docs/training.md#运行产物与进度)
 
 ## 文档索引
 

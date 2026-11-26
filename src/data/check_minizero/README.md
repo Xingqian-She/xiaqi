@@ -35,4 +35,4 @@ docker compose run --rm --no-deps --pull never -T -e PYTHONPATH=/workspace/build
   python -m unittest -v src.data.check_minizero.check_minizero_test
 ```
 
-测试覆盖导入和配置失败、完整短局，以及项目的 `7` 目贴目是否参与终局判定。找不到 `minizero_py` 时，原生绑定用例会跳过。 [测试代码](check_minizero_test.py) · [9×9 配置](../../../configs/minizero/go_9x9_az.cfg)
+测试覆盖导入和配置失败、完整短局，以及项目的 `7` 目贴目是否参与终局判定。找不到 `minizero_py` 时，原生绑定用例会跳过。 [测试代码](check_minizero_test.py) · [9×9 配置](../../../runs/go-9x9-az/minizero_base.cfg)

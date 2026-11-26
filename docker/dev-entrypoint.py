@@ -49,6 +49,13 @@ def prepare_database() -> None:
 
 
 def main() -> int:
+    command = sys.argv[1:]
+    require_existing = command[:1] == ["--existing"]
+    if require_existing:
+        command = command[1:]
+    if not command:
+        sys.exit("Usage: dev-entrypoint.py [--existing] COMMAND [ARG ...]")
+
     dev_command = None
     stop_signal = None
 
@@ -72,6 +79,8 @@ def main() -> int:
         except BlockingIOError:
             sys.exit("The PostgreSQL data volume is in use. Close the other dev container or open a shell in it.")
 
+        if require_existing and not (POSTGRES_DATA / "PG_VERSION").is_file():
+            sys.exit(f"Restore the experiment's existing PostgreSQL {POSTGRES_MAJOR} data directory.")
         prepare_database()
         if stop_signal is not None:
             return 128 + stop_signal
@@ -80,7 +89,7 @@ def main() -> int:
             if stop_signal is not None:
                 return 128 + stop_signal
 
-            dev_command = subprocess.Popen(sys.argv[1:])
+            dev_command = subprocess.Popen(command)
             if stop_signal is not None:
                 dev_command.send_signal(stop_signal)
                 return 128 + stop_signal

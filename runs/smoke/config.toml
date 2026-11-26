@@ -1,7 +1,3 @@
-[run]
-pool_id = "smoke-go-9x9"
-runs_dir = "runs"
-
 [go]
 board_size = 9
 komi = 7.0
@@ -29,7 +25,7 @@ weight_decay = 0.0001
 
 [selfplay]
 engine_path = "build/minizero/go/minizero_go"
-config_path = "configs/minizero/go_9x9_az.cfg"
+config_path = "minizero_base.cfg"
 num_threads = 1
 num_parallel_games = 1
 seed = 0

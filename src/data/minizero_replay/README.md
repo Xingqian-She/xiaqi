@@ -4,7 +4,7 @@
 
 ## 调用
 
-在 `dev` 容器中运行，并将 Go 版 `minizero_py` 所在的 `/workspace/build/minizero/go` 加入 `PYTHONPATH`。棋盘尺寸和贴目取自棋谱，`ko_rule` 应与采集配置一致，接受 `positional` 和 `situational`。默认值沿用项目的 `positional`。MiniZero 配置在进程内共享，同一进程内应串行调用。 [构建 Python 绑定](../check_minizero/README.md#构建与运行) · [9×9 配置](../../../configs/minizero/go_9x9_az.cfg)
+在 `dev` 容器中运行，并将 Go 版 `minizero_py` 所在的 `/workspace/build/minizero/go` 加入 `PYTHONPATH`。棋盘尺寸和贴目取自棋谱，`ko_rule` 应与采集配置一致，接受 `positional` 和 `situational`。默认值沿用项目的 `positional`。MiniZero 配置在进程内共享，同一进程内应串行调用。 [构建 Python 绑定](../check_minizero/README.md#构建与运行) · [9×9 配置](../../../runs/go-9x9-az/minizero_base.cfg)
 
 ```python
 from src.data.minizero_record.minizero_record import parse_record

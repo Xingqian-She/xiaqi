@@ -101,7 +101,7 @@ def _play_game(engine: subprocess.Popen[str], rules: GoRulesConfig, human: str) 
 def _console_command(model_path: Path, config: TrainingConfig | None) -> list[str]:
     engine = config.selfplay.engine_path if config else _REPO_ROOT / "build/minizero/go/minizero_go"
     base_config = (
-        config.selfplay.config_path if config else _REPO_ROOT / "configs/minizero/go_9x9_az.cfg"
+        config.selfplay.config_path if config else _REPO_ROOT / "runs/go-9x9-az/minizero_base.cfg"
     )
     if not engine.is_file():
         raise FileNotFoundError(f"找不到 MiniZero 引擎 {engine}。请先运行构建脚本。")
@@ -184,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--checkpoint", type=Path, help="训练检查点，优先使用其中的 EMA 权重。")
     source.add_argument("--model", type=Path, help="MiniZero 围棋 AlphaZero TorchScript 文件。")
-    parser.add_argument("--config", type=Path, help="训练 TOML。检查点默认使用同一运行的快照。")
+    parser.add_argument("--config", type=Path, help="训练 TOML。检查点默认使用同一实验的配置。")
     parser.add_argument("--color", choices=("black", "white"), default="black", help="你执黑或执白。")
     args = parser.parse_args(argv)
 

@@ -169,18 +169,17 @@ class MiniZeroSelfPlayTest(unittest.TestCase):
         connection = self.enterContext(psycopg.connect(test_url, autocommit=True))
         connection.execute(sql.SQL("CREATE SCHEMA {}").format(schema_identifier))
         self.addCleanup(connection.execute, sql.SQL("DROP SCHEMA {} CASCADE").format(schema_identifier))
-        schema_path = _REPO_ROOT / "src/data/postgresql_store/schema.sql"
+        schema_path = _REPO_ROOT / "src/data/postgresql/schema.sql"
         connection.execute(schema_path.read_text(encoding="utf-8"))
 
         directory = self.enterContext(TemporaryDirectory(prefix="xiaqi-minizero-export-"))
         model_path = Path(directory) / "tiny_go_9x9.pt"
         export_minizero_torchscript(_tiny_model(), model_path)
-        pool_id = "torchscript-test"
         command = [
             sys.executable, "-m", "scripts.collect_selfplay",
-            "--pool-id", pool_id, "--games", "1",
+            "--games", "1",
             "--engine", str(engine),
-            "--config", "configs/minizero/go_9x9_az.cfg",
+            "--config", "runs/go-9x9-az/minizero_base.cfg",
             "--model", str(model_path),
             "--conf-str", (
                 "program_quiet=true:program_auto_seed=false:zero_num_threads=1:"
@@ -209,9 +208,7 @@ class MiniZeroSelfPlayTest(unittest.TestCase):
 
         rows = connection.execute(
             "SELECT games.ingest_seq, games.record_text, source_runs.model_sha256 "
-            "FROM games JOIN source_runs USING (pool_id, source_run_id) "
-            "WHERE pool_id = %s",
-            (pool_id,),
+            "FROM games JOIN source_runs USING (source_run_id)"
         ).fetchall()
         self.assertEqual(len(rows), 1, output)
         ingest_seq, record_text, model_sha256 = rows[0]

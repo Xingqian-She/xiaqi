@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from pathlib import Path
 
 from ..alphazero_config.alphazero_config import AlphaZeroConfig
 from ..go_rules_config.go_rules_config import GoRulesConfig
@@ -14,7 +13,6 @@ from ..transformer_config.transformer_config import TransformerConfig
 class TrainingConfig:
     """一次训练运行所需的配置。"""
 
-    pool_id: str
     go: GoRulesConfig
     model: TransformerConfig
     learner: LearnerConfig
@@ -22,4 +20,3 @@ class TrainingConfig:
     selfplay: SelfPlayConfig
     alphazero: AlphaZeroConfig
     schedule: TrainingSchedule
-    runs_dir: Path = Path("runs")

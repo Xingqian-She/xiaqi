@@ -29,4 +29,4 @@ with Path("record.txt").open(encoding="utf-8") as lines:
 
 退出 `with` 时，如果引擎仍在运行，函数尝试发送 `quit` 并排空剩余输出，等待超过 10 秒则终止进程。收尾期间读到的剩余输出会被丢弃。调用方正常离开 `with` 时，引擎的非零退出码会报告为 `RuntimeError`。
 
-项目入口为 `python -m scripts.collect_selfplay`。`--games N` 现场生成并写入 N 条完整对局消息，先筛选再计数。`--record-file PATH` 读取已有输出文件，调用方需传入原采集批次的元数据。 [构建引擎与准备权重](../../../third_party/README.md#构建) · [完整采集和导入命令](../../../PostgreSQL.md#采集与导入)
+在所选实验的数据库 Shell 中运行 `python -m scripts.collect_selfplay`。`--games N` 现场生成并写入 N 条完整对局消息，先筛选再计数。`--record-file PATH` 读取已有输出文件，调用方需传入原采集批次的元数据。 [构建引擎与准备权重](../../../third_party/README.md#构建) · [完整采集和导入命令](../../../PostgreSQL.md#采集与导入)

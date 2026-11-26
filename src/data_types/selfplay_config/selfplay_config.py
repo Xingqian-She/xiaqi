@@ -7,7 +7,7 @@ class SelfPlayConfig:
     """MiniZero 引擎路径、并发和初始采集权重。"""
 
     engine_path: Path = Path("build/minizero/go/minizero_go")
-    config_path: Path = Path("configs/minizero/go_9x9_az.cfg")
+    config_path: Path = Path("minizero_base.cfg")
     num_threads: int = 4
     num_parallel_games: int = 32
     seed: int = 0

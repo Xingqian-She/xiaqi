@@ -47,4 +47,4 @@ SelfPlay true 0 0 -1 (;GM[go_9x9]RE[-1]OBS[]SZ[9]KM[7.000000]EV[model.pt]DLEN[0-
 
 早期模型的估值偏差一旦触发首手认输，就会阻断纠正估值所需的新样本。观察自对弈进展时，应同时看 `games_with_samples`、`sample_count` 和训练 `step`。单看入库盘数和白胜率容易把快速认输当成有效采集。
 
-下一次实验将 `[alphazero].disable_resign_ratio` 设为 `1.0`，让自对弈继续走到规则终局。首次启动使用新模型和棋谱池 `train-go-9x9-local-ema-no-resign`，`pool_restored` 应记录 0 盘、0 样本。这次实验的棋谱和检查点继续作为复盘证据。 [当前训练配置](../../configs/training/go_9x9_local_ema.toml) · [启动命令](../training.md#启动训练)
+下一次实验将 `[alphazero].disable_resign_ratio` 设为 `1.0`，让自对弈继续走到规则终局。首次启动使用新模型和棋谱池 `train-go-9x9-local-ema-no-resign`，`pool_restored` 应记录 0 盘、0 样本。这次实验的棋谱和检查点继续作为复盘证据。 [本地归档的启动配置](../../runs/go-9x9-ema/history/initial-training-config.toml) · [训练指南](../training.md#启动训练)

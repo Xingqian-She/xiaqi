@@ -1,10 +1,10 @@
 # 运行日志
 
-`RunLog(runs_dir, on_event=None)` 的 `open()` 创建本次运行的目录和日志。`write_metadata()` 保存 `run.json`，`event()` 将事件追加到 `events.jsonl`，写入后调用可选的终端回调。事件包含运行 ID 和时间，控制器提供轮次、步数、来源 UUID 和阶段所需的字段。 [实现代码](run_log.py) · [控制器](../training_controller/README.md) · [运行产物](../../../docs/training.md#运行产物与进度)
+`RunLog(directory, on_event=None)` 在选定实验目录中追加 `events.jsonl`，写入后调用可选的终端回调。每次启动产生新的 `run_id`。`run_started` 记录实际使用的 TOML、MiniZero 基础配置、初始权重和恢复点。后续事件记录轮次、步数、来源 UUID 和阶段所需的字段。 [实现代码](run_log.py) · [控制器](../training_controller/README.md) · [运行产物](../../../docs/training.md#运行产物与进度)
 
 ## TensorBoard 指标
 
-`log_step()` 以 `StepMetrics.step` 为横轴，控制器以采集轮号为横轴调用 `add_scalars()` 写入轮次指标。`flush()` 在每轮结束时写出待处理的指标，`close()` 关闭输出。文件和 TensorBoard 错误由控制器报告。 [启动 TensorBoard](../../../docs/training.md#tensorboard)
+`log_step()` 用累计训练步数写入 `tensorboard/train/`。`log_round()` 用实验中已完成的采集轮数写入 `tensorboard/rounds/`。恢复时，从检查点步数和最后一条完整轮次事件之后继续记录。`flush()` 在每轮结束时写出待处理的指标，`close()` 关闭输出。 [启动 TensorBoard](../../../docs/training.md#tensorboard)
 
 | 横轴 | 指标 | 含义 |
 | --- | --- | --- |

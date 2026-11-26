@@ -6,6 +6,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     image: &dev-image xiaqi/dev:latest
+    entrypoint: []
+    command: [/bin/bash]
     init: true
     stdin_open: true
     tty: true
@@ -16,9 +18,6 @@ services:
       - type: bind
         source: .
         target: /workspace
-      - type: volume
-        source: postgresql-data
-        target: /var/lib/postgresql
 
   tensorboard:
     image: *dev-image
@@ -26,18 +25,13 @@ services:
     profiles: [tensorboard]
     init: true
     entrypoint: [tensorboard]
-    command: [--logdir, /runs, --host, 0.0.0.0, --port, "6006"]
+    command: [--logdir, /logs, --host, 0.0.0.0, --port, "6006"]
     ports:
       - "127.0.0.1:6006:6006"
     volumes:
       - type: bind
-        source: ./runs
-        target: /runs
+        source: ${XIAQI_TENSORBOARD_DIR:-./runs/smoke/tensorboard}
+        target: /logs
         read_only: true
         bind:
-          create_host_path: true
-
-volumes:
-  postgresql-data:
-    name: xiaqi-postgresql-data
-    external: true
+          create_host_path: false

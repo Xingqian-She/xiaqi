@@ -20,7 +20,7 @@ from ...data_types.selfplay_result.selfplay_result import SelfPlayResult
 from ...data_types.source_run.source_run import SourceRun
 
 if TYPE_CHECKING:
-    from ...data.postgresql_store.postgresql_store import PostgreSQLStore
+    from ...data.postgresql.postgresql import PostgreSQLStore
     from ...data_types.training_config.training_config import TrainingConfig
 
 _Setting = bool | int | float | str
@@ -62,7 +62,6 @@ def training_overrides(config: TrainingConfig) -> dict[str, _Setting]:
 def collect_live(
     store: PostgreSQLStore,
     *,
-    pool_id: str,
     games: int,
     engine_path: Path,
     config_path: Path,
@@ -106,7 +105,6 @@ def collect_live(
 
     source = SourceRun(
         source_run_id=uuid4(),
-        pool_id=pool_id,
         model_sha256=model_sha256,
         minizero_commit=commit_file.read_text(encoding="ascii").strip(),
         effective_config=effective_config,
@@ -170,7 +168,7 @@ def _ingest(
         records = islice(iter_complete_records(lines), limit)
         for count, record in enumerate(records, start=1):
             game_id = uuid5(source.source_run_id, str(count))
-            last_ingest_seq = store.append_game(source.pool_id, game_id, source.source_run_id, record)
+            last_ingest_seq = store.append_game(game_id, source.source_run_id, record)
             if on_game_committed is not None:
                 on_game_committed(game_id, last_ingest_seq)
     return SelfPlayResult(count, last_ingest_seq, source)
